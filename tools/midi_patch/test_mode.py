@@ -83,7 +83,13 @@ check('FL Studio mode: Shift down / up is reported as CC 111 (the script shows i
 check('... Shift + Rec / Restart / Solo send their Shift CCs (113 count-in, 114 loop record, 115 clear mutes and solos)',
       (x.press('Shift'), [(x.press('Shift', b), x.press('Shift'))[0] for b in ('Rec', 'Restart', 'Solo')])[1], [[CC(113, 127)], [CC(114, 127)], [CC(115, 127)]])
 x.release()
-x = T(); check('Standalone mode: Shift stays the device\'s own (no CC 111)', (x.press('Shift'), x.release()), ([], []))
+x = T(); x.shift_project()
+check('FL Studio mode: Keyboard / Chords / Pad Mode report the pad mode as CC 116 (1 keyboard, 2 chords, 0 drums) on the press, nothing on the release',
+      [(x.press(b), x.release()) for b in ('Keyboard', 'Chords', 'Pad Mode')], [([CC(116, 1)], []), ([CC(116, 2)], []), ([CC(116, 0)], [])])
+check('... Shift + Keyboard (next scale) reports it too: keyboard (the scale step switches to it); Shift + Chords (chord type) does not change the mode, no report',
+      (x.press('Shift'), x.press('Shift', 'Keyboard'), x.press('Shift'), x.press('Shift', 'Chords'), x.release())[1::2], ([CC(116, 1)], []))
+x = T(); check('Standalone mode: Shift stays the device\'s own (no CC 111), and the pad mode buttons send nothing (no CC 116)',
+               (x.press('Shift'), x.release(), x.press('Keyboard'), x.release()), ([], [], [], []))
 
 # ---- in every mapping, also where Shift is a plain CC ---------------------------------------------------------------------------------------------------
 x = T(P['groove-rider-2']['cfg'])

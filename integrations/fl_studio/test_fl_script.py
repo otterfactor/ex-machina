@@ -208,6 +208,8 @@ check('... pad 2 REDO, pad 5 QUANTIZE, pad 6 QUANTIZE 50% (the note starts), pad
 for n in (2, 5, 6, 11): note(c, n, 0, False)
 shift(c, False)
 check('Shift up: the help line goes; a pad plays again (in play mode it goes to FL)', (screen(c)[1] != 'SHIFT PADS', note(c, 1, 100)), (True, False))
+c = fresh(); e = Event(0xB0 | tb.CHANNEL, tb.PADMODE_REPORT_CC, 2); c.midi(e)
+check('the device reports its pad mode (CC 116, here 2 = chords): handled (FL never sees it), kept', (e.handled, c.dev_padmode), (True, 2))
 c = fresh(); press(c, 'Shift+Rec'); a = screen(c)[1:3]; press(c, 'Shift+Restart'); b = screen(c)[1:3]
 check('Shift + Rec = count-in (printed "Count-in"), Shift + Restart = loop recording (printed "Loop"), both shown', (a, b), (['COUNT-IN', 'ON'], ['LOOP RECORD', 'ON']))
 P.ch[1]['mute'] = True; P.ch[2]['solo'] = True; press(c, 'Shift+Solo')

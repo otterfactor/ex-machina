@@ -34,7 +34,8 @@ A MIDI controller script for FL Studio (desktop, macOS and Windows) that turns t
 - **The script follows the mode.** At `OnInit` it sends MODE and waits for `62`: in FL Studio mode it takes over (below), in Standalone it stays passive and swallows everything the controller sends, so FL sees nothing of it; each announcement switches it. With no answer within a second (a firmware without modes) it takes over as before.
 - **The device side.** In FL Studio mode the device runs the mapping of the preset **FL Studio** (`mmk3_config._fl_studio()`):
   - Every button the script uses sends its NI CC as a gate (press 127, release 0), Play and Stop too, not MIDI Start / Stop.
-  - With Shift held, a few buttons send a second CC 102-110 (`FL_SHIFT_CC`). Shift itself is the device's modifier, so the device's own Shift functions still work.
+  - With Shift held, a few buttons send a second CC 102-110 (`FL_SHIFT_CC`). Shift itself is the device's modifier, so the device's own Shift functions still work; the firmware reports it as CC 111.
+  - Pad Mode / Keyboard / Chords stay the device's, but the firmware reports the resulting pad mode as **CC 116** (0 drums, 1 keyboard, 2 chords) on each press and on a scale step (Shift + Pad Mode / Keyboard, which switches to Keyboard), since 2026-10-21 (step 18). The script keeps it (`dev_padmode`) and keeps it from FL; it does nothing with it yet.
   - The encoder sends relative CC 7 (two's complement); its push is CC 8, its touch CC 9 (since 2026-10-21; before, it sent nothing). The script always handles CC 9, so FL's *Link to controller* should never see it and cannot learn the touch instead of the turn (to verify in FL: learn a parameter by turning the encoder).
   - The pads send notes 36-51; on an FPC or Slicex channel the script turns them into the plug-in's own notes (below).
   - Without the script, the preset is a plain CC controller.

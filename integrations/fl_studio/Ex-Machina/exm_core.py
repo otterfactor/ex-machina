@@ -76,6 +76,7 @@ class Controller:
         self.active = None; self.mode_t = 0.0                       # None: the device's mode not known yet, True: FL Studio mode, False: Standalone
         self.broken = False                                         # an error stopped the script (fail())
         self.win = None                                             # the window Project showed last (Playlist / Channel Rack)
+        self.dev_padmode = None                                     # the device's own pad mode (0 drums, 1 keyboard, 2 chords) as it last reported it, None: not yet
         self.shift = False                                          # Shift is held (the device reports it as SHIFT_REPORT_CC)
         self.shift_pads = set()                                     # pads pressed with Shift held: their release is ours too
         self.held = {}                                              # Step mode: held steps -> 'new' (set by this press) / 'on' (was on: off on release, unless edited) / 'edited'
@@ -128,6 +129,7 @@ class Controller:
         if st == 0xB0:
             n = ev.data1; v = ev.data2
             if n == t.SHIFT_REPORT_CC: ev.handled = True; self.shift_btn(v > 0); return
+            if n == t.PADMODE_REPORT_CC: ev.handled = True; self.dev_padmode = v; return       # (kept for later use; FL never sees it)
             if n == t.ENC_CC: ev.handled = True; self.turn(v if v < 64 else v - 128); return
             if n == PUSH: ev.handled = True; self.push_btn(v > 0); return
             if n == TOUCH: ev.handled = True; self.touch_enc(v > 0); return

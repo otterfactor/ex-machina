@@ -437,6 +437,7 @@ def _beatmaker3():
 
 FL_SHIFT_CC = {'Tap': 102, 'Left': 103, 'Right': 104, 'Plug-in': 105, 'Pattern': 106, 'Step': 107, 'Browser': 108, 'Erase': 109,
                'Play': 110, 'Encoder Push': 112, 'Rec': 113, 'Restart': 114, 'Solo': 115}   # what these buttons send with Shift held (the FL Studio script's second layer)
+FL_PADMODE_REPORT_CC = 116                             # FL Studio mode: the device's pad mode after Pad Mode / Keyboard / Chords or a scale step (0 drums, 1 keyboard, 2 chords)
 FL_SHIFT_REPORT_CC = 111                               # FL Studio mode: the firmware sends Shift down / up as this CC (translate.c FL_SHIFT_REPORT_CC)
 
 def _fl_studio():

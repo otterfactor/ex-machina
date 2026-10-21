@@ -41,6 +41,7 @@ def text():
     L.append(f'CMD_STEPS = {mc.CMD_STEPS:#04x}                                 # the step overview in place of text line 2 (Step mode, long patterns)')
     L.append(f'HOST_SCREEN, HOST_RAW, HOST_QUIET = {mc.HOST_SCREEN}, {mc.HOST_RAW}, {mc.HOST_QUIET}')
     L.append(f'SHIFT_REPORT_CC = {mc.FL_SHIFT_REPORT_CC}                            # the device sends Shift down / up as this CC (FL Studio mode)')
+    L.append(f'PADMODE_REPORT_CC = {mc.FL_PADMODE_REPORT_CC}                          # ... and its pad mode (0 drums, 1 keyboard, 2 chords) after Pad Mode / Keyboard / Chords or a scale step')
     L.append('STRIP_LED0, STRIP_LEDS = 55, 25                       # the touch-strip LEDs, left to right (translate.c STRIP_LED0)')
     L.append(f'CMD_MODE = {mc.CMD_MODE:#04x}                                  # the device\'s mode: 0 Standalone (the script stays out of the way), 1 FL Studio')
     return '\n'.join(L) + '\n'

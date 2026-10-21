@@ -147,6 +147,7 @@ _Static_assert(sizeof(struct cfg) == 274, "cfg layout is mirrored in mmk3_config
 #define BTN_PROJECT 0                              /* the top-left button: fixed (cfg_fixed) */
 #define BTN_SHIFT 25                               /* Shift, for the mode switch whatever it is mapped to */
 #define FL_SHIFT_REPORT_CC 111                     /* FL Studio mode: Shift down / up as this CC (mmk3_config.FL_SHIFT_REPORT_CC) */
+#define FL_PADMODE_REPORT_CC 116                   /* FL Studio mode: the device's pad mode (0 drums, 1 keyboard, 2 chords) after Pad Mode / Keyboard / Chords or a scale step */
 #define CHORD_N 8u                                  /* chord types: 0..4 built from the scale, CHORD_FIXED.. fixed shapes */
 #define CHORD_FIXED 5u
 #define CHORD_MAX 6u                                /* the most notes a chord pad plays (maj 11) */
@@ -1216,7 +1217,12 @@ static u8 *button_event(struct state *s, const struct cfg *c, u8 *q, u8 act, u8 
         announce_program(s);
         return emit(q, 0xC0 | ch, s->prog, 0);
     }
-    if (act >= ACT_PADMODE) { mode_action(s, c, act, par); return q; }
+    if (act >= ACT_PADMODE) {
+        mode_action(s, c, act, par);
+        if (s->fl && (act == ACT_PADMODE || act == ACT_KEYS || act == ACT_CHORDS || act == ACT_SCALE))
+            q = emit(q, 0xB0 | ch, FL_PADMODE_REPORT_CC, s->padmode);   /* FL Studio mode: the script learns the pad mode (the buttons are the device's own) */
+        return q;
+    }
     return act == ACT_MMC ? emit_mmc(q, par) : emit1(q, act == ACT_START ? 0xFA : act == ACT_CONT ? 0xFB : 0xFC);
 }
 

@@ -16,5 +16,6 @@ CMD_HOST, CMD_TEXT = 0x20, 0x21
 CMD_STEPS = 0x23                                 # the step overview in place of text line 2 (Step mode, long patterns)
 HOST_SCREEN, HOST_RAW, HOST_QUIET = 1, 2, 4
 SHIFT_REPORT_CC = 111                            # the device sends Shift down / up as this CC (FL Studio mode)
+PADMODE_REPORT_CC = 116                          # ... and its pad mode (0 drums, 1 keyboard, 2 chords) after Pad Mode / Keyboard / Chords or a scale step
 STRIP_LED0, STRIP_LEDS = 55, 25                       # the touch-strip LEDs, left to right (translate.c STRIP_LED0)
 CMD_MODE = 0x22                                  # the device's mode: 0 Standalone (the script stays out of the way), 1 FL Studio
