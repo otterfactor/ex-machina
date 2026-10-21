@@ -36,6 +36,15 @@ def led_msg(led, value):
 
 def host(flags): return MFR + bytes([t.CMD_HOST, flags & 0x7F, 0xF7])
 
+def steps_msg(steps=0, on=(), first=0, count=16, playhead=None):
+    """STEPS: the step overview in place of text line 2: `steps` (1..128) with those in `on` set, the visible page first..first+count-1, the
+    playhead step or None; steps=0: line 2 is text again. A firmware without it ignores it (the text stays)."""
+    if not steps: return MFR + bytes([t.CMD_STEPS, 0, 0xF7])
+    bits = bytearray((steps + 6) // 7)
+    for k in on:
+        if 0 <= k < steps: bits[k // 7] |= 1 << (k % 7)
+    return MFR + bytes([t.CMD_STEPS, 1 | (2 if playhead is not None else 0), steps - 1, first, count - 1, playhead or 0]) + bytes(bits) + bytes([0xF7])
+
 def mode_query(): return MFR + bytes([t.CMD_MODE, 0xF7])
 
 NOTE_NAMES = ('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B')

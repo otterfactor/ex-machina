@@ -286,6 +286,12 @@ struct state {              /* RAM above the firmware's stack, zeroed by mmk3_in
     u8 hgen;                /* bumped by every TEXT: the host's picture is drawn again */
     u16 rawheld;            /* pads (report index) whose Note On went out as a grid note; their Note Off follows whatever the flags say by then */
     char htext[4][21];      /* the host's four text lines, 21 characters each (0 = blank) */
+    /* The host's step overview (SysEx 23 STEPS): a pattern of up to 128 steps drawn in place of text line 2 (rows 16-23), the visible page bracketed. */
+    u8 hs_on;               /* HS_* flags; 0: line 2 is text */
+    u8 hs_n;                /* steps in the overview, 1..128 */
+    u8 hs_first, hs_cnt;    /* the visible page: its first step and how many */
+    u8 hs_ph;               /* the playhead step (HS_PLAYHEAD) */
+    u8 hsteps[16];          /* bit k = step k is set */
     /* The two modes (Shift + Project, SysEx 22 MODE; remembered in the settings log): Standalone (the mappings, slots and functions as they are) and
      * FL Studio (the built-in mapping CFG_FL for the FL Studio device script; the standalone mapping waits in FL_STASH). */
     u8 fl;                  /* 1: FL Studio mode */
@@ -295,6 +301,8 @@ struct state {              /* RAM above the firmware's stack, zeroed by mmk3_in
 #define HOST_SCREEN 1u      /* the picture behind the messages is the host's text, not the idle screen / sequencer grid */
 #define HOST_RAW 2u         /* every pad sends note 36 + its number - 1 (pad 1 = 36 ... pad 16 = 51) whatever the pad mode, arp, mute / solo or sequencer */
 #define HOST_QUIET 4u       /* no messages of the firmware's own on the screen */
+#define HS_ON 1u            /* STEPS: the overview replaces text line 2 */
+#define HS_PLAYHEAD 2u      /* STEPS: the playhead is shown */
 #define ST_ADDR 0x20004200u
 #define ST ((struct state *)ST_ADDR)
 #define ST_MAGIC 0x4D4D4B33u
@@ -955,11 +963,23 @@ static u32 col_seq(const struct state *s, u32 x)           /* the sequencer grid
     else if (!(step & 3) && (c == 3 || c == 4)) m |= 3u << 29;
     return m;
 }
-static u32 col_host(const struct state *s, u32 x)          /* the host's text: line n on rows 8n..8n+6, 21 cells of 6 pixels from x = 1 */
+/* The host's step overview in rows 16-23: step k covers columns ceil(128k/n) .. ceil(128(k+1)/n) - 1 (the last one left blank when a step is 3 or more
+ * columns wide); a set step is rows 18-21, an unset one row 21 (rows 20-21 on every 4th step), the playhead step is inverted in rows 17-22, and rows 16
+ * and 23 bracket the visible page. */
+static u32 col_steps(const struct state *s, u32 x)
+{
+    u32 n = s->hs_n, k = (x * n) >> 7, x0 = (k * 128u + n - 1) / n, x1 = ((k + 1) * 128u + n - 1) / n - 1, m = 0;
+    if (k >= s->hs_first && k < (u32)s->hs_first + s->hs_cnt) m |= 1u << 16 | 1u << 23;
+    if (x1 - x0 >= 2 && x == x1) return m;
+    m |= (s->hsteps[k >> 3] >> (k & 7)) & 1 ? 0xFu << 18 : (k & 3) ? 1u << 21 : 3u << 20;
+    if ((s->hs_on & HS_PLAYHEAD) && k == s->hs_ph) m ^= 0x3Fu << 17;
+    return m;
+}
+static u32 col_host(const struct state *s, u32 x)          /* the host's text: line n on rows 8n..8n+6, 21 cells of 6 pixels from x = 1; line 2 may be the overview */
 {
     u32 l, m = 0;
-    for (l = 0; l < 4; l++) m |= text_col(s->htext[l], 21, x, 1) << (8 * l);
-    return m;
+    for (l = 0; l < 4; l++) if (l != 2 || !(s->hs_on & HS_ON)) m |= text_col(s->htext[l], 21, x, 1) << (8 * l);
+    return (s->hs_on & HS_ON) ? m | col_steps(s, x) : m;
 }
 static u32 col_view(const struct state *s, u32 x) { return (s->host & HOST_SCREEN) ? col_host(s, x) : s->padmode == 3 ? col_seq(s, x) : col_idle(s, x); }
 
@@ -2137,7 +2157,7 @@ static void host_set(struct state *s, u32 f)
 {
     u32 l, k;
     if ((f ^ s->host) & HOST_RAW) release_all(s, s->cfgp);
-    if ((f & HOST_SCREEN) && !(s->host & HOST_SCREEN)) for (l = 0; l < 4; l++) for (k = 0; k < 21; k++) s->htext[l][k] = 0;
+    if ((f & HOST_SCREEN) && !(s->host & HOST_SCREEN)) { for (l = 0; l < 4; l++) for (k = 0; k < 21; k++) s->htext[l][k] = 0; s->hs_on = 0; }
     s->host = (u8)f;
     s->vdirty = 1;
 }
@@ -2525,6 +2545,8 @@ static void led_host_set(u32 idx, u8 code) { ST->led[idx] = code; ST->base[idx] 
  *   cmd 02  LED frame: 80 bytes (LED colour codes 0..127), one per LED index
  *   cmd 21  TEXT: line 0..3 (0x7F: all four blank), column 0..20, then up to 21 - column characters (shown while HOST_SCREEN is set)
  *   cmd 20  HOST <flags> is a request (reply 60, main loop), see host_set()
+ *   cmd 23  STEPS: flags (HS_ON, HS_PLAYHEAD; 0 = line 2 is text again) steps-1 (0..127) first count-1 playhead <the set steps, 7 per byte, step 7j+i = bit i
+ *           of byte j>; a wrong length or a page / playhead outside the steps is ignored (no reply, like TEXT)
  * 7-bit packing: groups of 8 MIDI bytes; the first holds bit 7 of the next 7 data bytes
  * (bit k -> data byte k). Regions are handed to the stock code through the same RAM buffers a
  * native 0xe0 display report / 0x80 LED report would fill, so the firmware does the rest. */
@@ -2553,6 +2575,15 @@ static void sysex_done(void)
         u32 line = b[4], col = n > 5 ? b[5] : 0, l;
         if (line == 0x7F) { for (l = 0; l < 4; l++) for (i = 0; i < 21; i++) s->htext[l][i] = 0; s->hgen++; }
         else if (line < 4 && col < 21) { for (i = 6; i < n && col < 21; i++) s->htext[line][col++] = (char)b[i]; s->hgen++; }
+    } else if (b[3] == 0x23 && n >= 5) {            /* STEPS: the step overview in place of text line 2; drawn by the main loop */
+        u32 f = b[4], st, first, cnt;
+        if (!(f & HS_ON)) { s->hs_on = 0; s->hgen++; return; }
+        if (n < 9 || f > 3) return;
+        st = b[5] + 1u; first = b[6]; cnt = b[7] + 1u;
+        if (n != 9 + (st + 6) / 7 || first >= st || first + cnt > st || ((f & HS_PLAYHEAD) && b[8] >= st)) return;
+        for (i = 0; i < 16; i++) s->hsteps[i] = 0;
+        for (i = 0; i < st; i++) if ((b[9 + i / 7] >> (i % 7)) & 1) s->hsteps[i >> 3] |= (u8)(1u << (i & 7));
+        s->hs_on = (u8)f; s->hs_n = (u8)st; s->hs_first = (u8)first; s->hs_cnt = (u8)cnt; s->hs_ph = b[8]; s->hgen++;
     } else if ((b[3] >= 0x10 && b[3] <= 0x17) || (b[3] >= 0x1C && b[3] <= 0x1F) || b[3] == 0x20 || b[3] == 0x22) {
         req_start(s, b + 3, n - 3);
     }

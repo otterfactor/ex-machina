@@ -13,8 +13,9 @@ sys.path.insert(0, HERE); sys.path.insert(0, os.path.join(HERE, 'Ex-Machina'))
 import flsim
 from flsim import Event
 P = flsim.install()
-import exm_core, exm_out as out, exm_tables as tb
+import exm_core, exm_out as out, exm_tables as tb, exm_settings
 import midi, transport
+exm_settings.DRUM_LAYOUTS = False                   # (until the drum-layout checks: the stand-in's first channel is an FPC, which would switch play mode to its layout)
 
 ok = True
 def check(name, got, want=True):
@@ -174,10 +175,9 @@ press(c, 'Browser'); enc(c, 2); cc(c, 8, 127); cc(c, 8, 0)
 check('Browser: shown and focused; encoder = next, push = enter', (calls('showWindow'), calls('next'), calls('enter')), ([(midi.widBrowser,)], [(), ()], [()]))
 press(c, 'Shift+Browser'); check('Shift + Browser: hidden, no target', (calls('hideWindow'), c.target), ([(midi.widBrowser,)], None))
 P.log.clear(); press(c, 'Favorites'); check('Favorites: the selected channel\'s plug-in window', calls('showEditor'), [(3,)])
-check('the encoder touch sends nothing in the preset (a learn would grab it)', 'Encoder Touch' in tb.BUTTON_CC, False)
+check('the encoder touch is CC 9 in the FL Studio mapping (the script keeps it from FL, so Link to controller cannot learn it)', tb.BUTTON_CC.get('Encoder Touch'), 9)
 
 # ---- the step editor, Shift, the strip, focus and the hint bar (the 2026-10-21 research: FLkey / Fire / DrivenByMoss ideas) ----------------------------
-import exm_settings
 def note(c, n, vel, on=True):
     e = Event((0x90 if on else 0x80) | tb.CHANNEL, tb.PAD_NOTE[n], vel if on else 0); c.midi(e); c.idle(); return e.handled
 def shift(c, down): e = Event(0xB0 | tb.CHANNEL, tb.SHIFT_REPORT_CC, 127 if down else 0); c.midi(e); c.idle(); return e.handled
@@ -230,7 +230,18 @@ check('Step brings the Channel Rack to the front; the message also goes to FL\'s
 P.log.clear(); press(c, 'Group'); check('Group brings the Mixer', calls('showWindow'), [(midi.widMixer,)])
 exm_settings.FOCUS_WINDOWS = False; P.log.clear(); press(c, 'Select'); check('... unless FOCUS_WINDOWS is off', calls('showWindow'), []); exm_settings.FOCUS_WINDOWS = True
 
+import importlib
+exm_core.PROBE_S = 99; del exm_settings.STEP_OVERVIEW
 import device_ExMachina as dev
+exm_core.now = lambda: clock[0]                     # (the device file loads the script's modules again, as FL needs: the test clock goes back in)
+check('the device file loads the script\'s modules again (FL keeps them across "Update MIDI scripts"): a changed module is back as on disk', (exm_core.PROBE_S, exm_settings.STEP_OVERVIEW), (1.0, True))
+del exm_settings.STEP_OVERVIEW; del exm_settings.DRUM_LAYOUTS; importlib.reload(exm_core)
+check('a settings file without the newer settings: they get their defaults', (exm_settings.STEP_OVERVIEW, exm_settings.DRUM_LAYOUTS), (True, True))
+exm_core.now = lambda: clock[0]; exm_settings.DRUM_LAYOUTS = False
+c = fresh(); P.out.clear(); press(c, 'Step'); a = hosts(); advance(0.3); c.idle(); b = hosts(); advance(0.3); c.idle()
+check('HOST not confirmed (the device dropped it while busy): sent again after 0.5 s, until the answer comes', (a, b, hosts()), ([3], [3], [3, 3]))
+c.on_sysex(Event(0xF0, sysex=bytes([0xF0, 0x7D, 0x4D, 0x4B, 0x60, 0, 3, 0xF7]))); P.out.clear(); advance(2); c.idle()
+check('... confirmed: not again', hosts(), [])
 flsim.P = P = flsim.Project(); dev.ctl = exm_core.Controller(); dev.ctl.init(); dev.ctl.on_sysex(Event(0xF0, sysex=MODE_FL)); dev.ctl.on_sysex(Event(0xF0, sysex=bytes([0xF0, 0x7D, 0x4D, 0x4B, 0x60, 0, 1, 0xF7]))); dev.ctl.idle()
 dev.ctl.turn = lambda d: 1 / 0; P.out.clear()
 import io, contextlib
@@ -243,6 +254,103 @@ P.out.clear(); dev.OnDeInit()
 check('... from then on FL gets the controller\'s MIDI as plain MIDI; closing FL still ends host mode (HOST 0)', (e.handled, hosts()), (False, [0]))
 exm_settings.LOOP_RECORD_ON_CONNECT = True; flsim.P = P = flsim.Project(); exm_core.Controller().init()
 check('setting LOOP_RECORD_ON_CONNECT: loop recording switched on when the script starts (once, only if it is off)', calls('globalTransport'), [(113, 1)]); exm_settings.LOOP_RECORD_ON_CONNECT = False
+
+# ---- drum layouts, groups, Variation, the encoder touch (ideas 9-12 of the research) -------------------------------------------------------------------
+def ev(c, n, vel, on=True):
+    e = Event((0x90 if on else 0x80) | tb.CHANNEL, tb.PAD_NOTE[n], vel if on else 0); c.midi(e); c.idle(); return e
+def title(c): return screen(c)[0]
+exm_settings.DRUM_LAYOUTS = True
+def fpc32(): P.ch[0]['fpc'] = [(40 + i, 0xFF0000 if i < 16 else 0x0000FF) for i in range(16)] + [(70 + i, 0x0000FF) for i in range(16)]
+flsim.P = P = flsim.Project(); fpc32()
+c = exm_core.Controller(); c.init(); c.on_sysex(Event(0xF0, sysex=MODE_FL)); c.on_sysex(Event(0xF0, sysex=bytes([0xF0, 0x7D, 0x4D, 0x4B, 0x60, 0, 3, 0xF7]))); c.idle()
+check('drum layout: an FPC channel selected -> HOST 3 (the pads a raw grid, whatever the device\'s pad mode), title PLAY FPC BANK A', (hosts(), title(c)), ([3], 'PLAY FPC BANK A'))
+e = ev(c, 1, 100); f = ev(c, 1, 0, False)
+check('... pad 1 plays FPC\'s pad 1 note (40, from getPadInfo), passed on to FL; its release too', (e.handled, e.data1, f.handled, f.data1), (False, 40, False, 40))
+check('... the pads in FPC\'s pad colours (bank A red)', c.leds[tb.PAD_LED[1]], out.code(1, 2))
+press(c, 'Right')
+check('Right: FPC bank B (pads 17-32), the same channel; pad 2 = 71, blue', (P.sel, title(c), ev(c, 2, 90).data1, c.leds[tb.PAD_LED[2]]), (0, 'PLAY FPC BANK B', 71, out.code(11, 2)))
+ev(c, 2, 0, False); e = ev(c, 3, 100); press(c, 'Left'); f = ev(c, 3, 0, False)
+check('a pad held while the bank changes: its release goes to the note it started (72), not bank A\'s', (e.data1, title(c), f.data1), (72, 'PLAY FPC BANK A', 72))
+check('... the arrows: Left dark (first bank of the first channel), Right lit', (c.leds[tb.BUTTON_LED['Left']], c.leds[tb.BUTTON_LED['Right']]), (0, 0x7C))
+press(c, 'Right'); P.out.clear(); press(c, 'Right')
+check('Right past the last bank: the next channel (Clap, a Sampler: no layout), the pads play the device\'s own mode again (HOST 1)', (P.sel, title(c), hosts(), ev(c, 1, 100).data1), (1, 'PLAY', [1], 36))
+ev(c, 1, 0, False); P.ch[1]['plugin'] = 'Slicex'; c.dirty = True; c.idle()
+check('Slicex: slice 1 = note 60 on pad 1, pad 16 = 75; the title says which slices', (hosts()[-1], ev(c, 1, 100).data1, ev(c, 16, 100).data1, title(c)), (3, 60, 75, 'PLAY SLICES 1-16'))
+ev(c, 1, 0, False); ev(c, 16, 0, False)
+for _ in range(4): press(c, 'Right')
+check('... the fifth page: slices 65-68 (notes 124-127) on pads 1-4, pad 5 (beyond 127) silent and dark', (title(c), ev(c, 4, 100).data1, ev(c, 5, 100).handled, c.leds[tb.PAD_LED[5]], c.leds[tb.PAD_LED[4]] > 0), ('PLAY SLICES 65-80', 127, True, 0, True))
+ev(c, 4, 0, False); press(c, 'Right'); check('... and Right goes on to the next channel', P.sel, 2)
+P.ch[0]['fpc'] = P.ch[0]['fpc'][:16]; P.sel = 0; c.dirty = True; c.idle(); press(c, 'Right')
+check('an FPC of 16 pads has one bank: Right goes straight to the next channel', P.sel, 1)
+exm_settings.DRUM_LAYOUTS = False; P.sel = 0; P.out.clear(); c.dirty = True; c.idle()
+check('DRUM_LAYOUTS off: an FPC channel plays the plain notes (HOST 1, pad 1 = 36)', (hosts(), ev(c, 1, 100).data1), ([1], 36)); ev(c, 1, 0, False)
+exm_settings.DRUM_LAYOUTS = True
+
+c = fresh(); P.ch = [dict(P.ch[1], name='Ch %d' % k) for k in range(20)]; press(c, 'Select'); press(c, 'Right')
+check('Channel Rack group: 20 channels in Select mode, page 2 shows 17-20', title(c), 'SELECT 2/2')
+del P.ch[3:]; c.on_refresh(midi.HW_Dirty_ChannelRackGroup); c.idle()
+check('... FL switches to a group of 3 channels (OnRefresh): back to page 1, the screen says how many', (title(c), screen(c)[1:3]), ('SELECT 1/1', ['CHANNEL RACK', '3 CHANNELS']))
+press(c, 'Step'); note(c, 2, 100); del P.ch[:]; c.on_refresh(midi.HW_Dirty_ChannelRackGroup); c.idle()
+check('... an empty group: held steps are dropped, the screen says so, and a pad sets nothing', (c.held, screen(c)[2], pad(c, 1), screen(c)[2], calls('setGridBit')[-1:]),
+      ({}, 'GROUP IS EMPTY', True, 'NO CHANNELS IN GROUP', [(0, 1, 1)]))
+c = fresh(); P.pat += [dict(name='Pattern %d' % k, color=0x00FF00, length=4) for k in (3, 4, 5)]
+P.pgroups = [('Drums', (2, 4))]; P.pgroup = 0; P.log.clear(); press(c, 'Pattern')
+check('pattern group "Drums" (patterns 2 and 4) selected in FL: Pattern mode says so; pad 1 = pattern 2, pad 2 = pattern 4', (screen(c)[2], pad(c, 1), pad(c, 2), calls('jumpToPattern')), ('GROUP DRUMS', True, True, [(2,), (4,)]))
+check('... the pad after the group\'s patterns is dark and makes no pattern (a new one would not be in the group)', (c.leds[tb.PAD_LED[3]], pad(c, 3), calls('jumpToPattern')[-1]), (0, True, (4,)))
+P.pgroup = -1; c.dirty = True; c.idle(); pad(c, 6)
+check('... all patterns again: pad 6, after the last (5), makes pattern 6', (calls('jumpToPattern')[-1], len(P.pat)), ((6,), 6))
+
+c = fresh(); P.sel = 3; P.log.clear(); P.out.clear(); press(c, 'Variation')
+check('Variation: the pads are the plug-in\'s named parameters (3x Osc: 3 of 4 have names), HOST 3, its window shown and focused',
+      (c.mode, c.host_want, calls('showEditor'), calls('focusEditor'), [c.leds[tb.PAD_LED[n]] for n in (1, 2, 3, 4)]),
+      ('variation', 3, [(3,)], [(3,)], [out.code(1, 1), out.code(2, 1), out.code(5, 1), 0]))
+check('... pad 2 = the second named parameter (index 2): the encoder now turns it, shown, its pad bright', (pad(c, 2), c.param, c.target, screen(c)[1:3], c.leds[tb.PAD_LED[2]]),
+      (True, 2, 'plugin', ['OSC 2 COARSE', '-12 ST'], out.code(2, 3)))
+enc(c, 32); check('... encoder: +32/128', P.ch[3]['params'][2][1], 0.5)
+check('... the Variation and Plug-in LEDs lit', (c.leds[tb.BUTTON_LED['Variation']], c.leds[tb.BUTTON_LED['Plug-in']]), (0x7F, 0x7F))
+exm_settings.PLUGIN_PAGES = {'3x Osc': ['Osc 3 coarse', 'Osc 1 COARSE', 'Not a parameter']}; press(c, 'Variation'); press(c, 'Variation')
+check('PLUGIN_PAGES: the listed names in that order (matched without case, unknown names left out): pad 1 = index 3, pad 2 = index 0', (pad(c, 1), c.param, pad(c, 2), c.param, c.leds[tb.PAD_LED[3]]), (True, 3, True, 0, 0))
+exm_settings.PLUGIN_PAGES = {}
+P.ch[3]['params'] = [['P%d' % k, 0.0] for k in range(40)]; press(c, 'Variation'); press(c, 'Variation'); press(c, 'Right'); pad(c, 1)
+check('40 parameters: 3 pages, page 2 pad 1 = parameter 16', (title(c)[:10], c.param), ('PARAMS 2/3', 16))
+P.ch[2]['plugin'] = None; P.sel = 2; press(c, 'Variation'); press(c, 'Variation')
+check('a channel with no plug-in: the pads are dark and the screen says so', (screen(c)[2], c.leds[tb.PAD_LED[1]]), ('NO PLUG-IN PARAMETERS', 0))
+
+c = fresh(); press(c, 'Volume'); advance(2); c.idle(); vol = P.ch[0]['vol']
+check('encoder touch (CC 9): handled, the target and its value on the screen, nothing changed', (cc(c, 9, 127), (c.idle(), screen(c)[1:3])[1], P.ch[0]['vol']), (True, ['VOL KICK', '78%'], vol))
+advance(5); c.idle(); a = screen(c)[1]; cc(c, 9, 0); c.idle(); b = screen(c)[1]; advance(2); c.idle()
+check('... it stays while touched, and goes 1.5 s after the touch ends', (a, b, screen(c)[1]), ('VOL KICK', 'VOL KICK', 'KICK'))
+press(c, 'Volume'); press(c, 'Step'); note(c, 1, 100); cc(c, 9, 127); c.idle()
+check('... in Step mode with a step held: the held step\'s parameter', screen(c)[1:3], ['STEP 1 VELOCITY', '100'])
+cc(c, 9, 0); note(c, 1, 0, False)
+exm_settings.TOUCH_PREVIEW = False; c = fresh(); press(c, 'Volume'); advance(2); c.idle()
+check('TOUCH_PREVIEW off: the touch is still kept from FL, nothing shown', (cc(c, 9, 127), (c.idle(), screen(c)[1])[1]), (True, 'KICK')); exm_settings.TOUCH_PREVIEW = True
+exm_settings.DRUM_LAYOUTS = False
+
+def steps_sent(): return [b for b in sysexes() if b[4] == tb.CMD_STEPS]
+def ov_parse(b):
+    if b[5] == 0: return None
+    n = b[6] + 1; on = {k for k in range(n) if b[10 + k // 7] >> (k % 7) & 1}
+    return n, on, b[7], b[8] + 1, b[9] if b[5] & 2 else None
+c = fresh(); P.pat[0]['length'] = 8; P.ch[0]['grid'] = {0, 5, 20, 31}; press(c, 'Step'); advance(2); c.idle()
+check('Step mode, a pattern of 32 steps: the overview goes to the device (STEPS: 32 steps, the set ones, page 1-16, no playhead)',
+      [ov_parse(b) for b in steps_sent()][-1:], [(32, {0, 5, 20, 31}, 0, 16, None)])
+P.out.clear(); c.dirty = True; c.idle(); check('... nothing changed: not sent again', steps_sent(), [])
+press(c, 'Right'); advance(2); c.idle()
+check('... while the page message shows, the overview is off (both lines readable); then it is back with page 17-32 bracketed',
+      [ov_parse(b) for b in steps_sent()], [None, (32, {0, 5, 20, 31}, 16, 16, None)])
+P.out.clear(); P.playing = True; P.step = 21; advance(0.1); c.idle()
+check('... while FL plays: the playhead (step 22)', [ov_parse(b) for b in steps_sent()], [(32, {0, 5, 20, 31}, 16, 16, 21)])
+P.playing = False; P.out.clear(); press(c, 'Step'); c.idle(); advance(2); c.idle()
+check('... leaving Step mode: line 3 is text again (STEPS 0)', [ov_parse(b) for b in steps_sent()], [None])
+c = fresh(); P.pat[0]['length'] = 64; P.ch[0]['grid'] = {130, 255}; press(c, 'Step')
+for _ in range(8): press(c, 'Right')
+advance(2); c.idle()
+check('a pattern of 256 steps, page 9 (steps 129-144): the overview is the 128 steps holding the page (129-256)', [ov_parse(b) for b in steps_sent()][-1:], [(128, {2, 127}, 0, 16, None)])
+c = fresh(); P.out.clear(); P.ch[0]['grid'] = {2}; press(c, 'Step'); advance(2); c.idle()
+check('a pattern of 16 steps: the overview too (16 steps, all of them on the pads)', [ov_parse(b) for b in steps_sent()], [(16, {2}, 0, 16, None)])
+exm_settings.STEP_OVERVIEW = False; c = fresh(); P.pat[0]['length'] = 8; press(c, 'Step'); advance(2); c.idle()
+check('STEP_OVERVIEW off: none', steps_sent(), []); exm_settings.STEP_OVERVIEW = True
 
 # ---- colours ------------------------------------------------------------------------------------------------------------------------------------------
 check('colours: red, green, blue, yellow, grey, black', [out.nearest(x) for x in (0xFF0000, 0x00FF00, 0x0000FF, 0xFFFF00, 0x808080, 0)], [1, 7, 11, 5, 17, 17])
@@ -328,6 +436,26 @@ if len(sys.argv) > 2:
     check('device: holding Shift on the device shows the script\'s help line (the firmware reports Shift)', out.clean(x.c.lines[1]).rstrip(), 'SHIFT PADS')
     pk = x.d.translate(devsim.report2([(PADIDX[5], 1, 3000)])); x.device(pk); x.device(x.d.translate(devsim.report2([(PADIDX[5], 3, 0)]))); x.device(x.d.translate(devsim.report1()))
     check('device: Shift + pad 5 on the device -> FL quick-quantizes the selected channel', calls('quickQuantize')[-1:], [(0, 0)])
+    exm_settings.DRUM_LAYOUTS = True
+    x = Link(); x.press('Keyboard'); P.log.clear()
+    out1 = x.d.translate(devsim.report2([(PADIDX[1], 1, 3000)])); x.device(out1)
+    check('device: an FPC channel in the device\'s Keyboard mode: the device sends the grid note (36), the script passes FPC\'s pad note on',
+          (x.c.host_flags, [m[2] for m in out1 if m[0] == 9]), (3, [36]))
+    x.device(x.d.translate(devsim.report2([(PADIDX[1], 3, 0)]))); P.sel = 1; x.c.dirty = True; x.pump()
+    out1 = x.d.translate(devsim.report2([(PADIDX[1], 1, 3000)]))
+    check('device: a Sampler channel selected -> the device\'s own Keyboard mode again (pad 1 = 60)', (x.c.host_flags, [m[2] for m in out1 if m[0] == 9]), (1, [60]))
+    x.device(out1); x.device(x.d.translate(devsim.report2([(PADIDX[1], 3, 0)])))
+    exm_settings.DRUM_LAYOUTS = False
+    x = Link(); P.pat[0]['length'] = 8; P.ch[0]['grid'] = {0, 5, 20, 31}; x.press('Step'); advance(2); x.pump(); x.sc.settle()
+    ov = x.c.overview()
+    check('device: Step mode on 32 steps: the device shows the script\'s lines with the overview in place of line 3, pixel for pixel',
+          (ov, x.sc.fb() == dispsim.host_screen([out.clean(l) for l in x.c.lines], ov)), ((32, {0, 5, 20, 31}, 0, 16, None), True))
+    check('device: the script\'s STEPS message is the one mmk3_config builds', out.steps_msg(*ov) == mc.steps_request(*ov) and out.steps_msg(0) == mc.steps_request(0))
+    x.press('Step'); advance(2); x.pump(); x.sc.settle()
+    check('device: out of Step mode the third line is text again', x.sc.fb() == out.frame(x.c.lines))
+    x.press('Volume'); advance(2); x.pump(); x.device(x.d.translate(devsim.report1([B['Encoder Touch']]))); x.sc.settle()
+    check('device: touching the encoder (CC 9 in the FL Studio mapping) shows the value on the device\'s screen', (out.clean(x.c.lines[1]).rstrip(), x.sc.fb() == out.frame(x.c.lines)), ('VOL KICK', True))
+    x.device(x.d.translate(devsim.report1()))
     x = Link(answer=False, fl=False); advance(1.1); x.pump(2); advance(1.1); x.pump(8); x.sc.settle(); x.pump(4)   # (no answer to MODE, then none to HOST)
     check('device, no answer to HOST: the pixel regions draw the same picture', (x.c.host_ok, x.sc.fb() == out.frame(x.c.lines)), (False, True))
     check('device, no answer: the LEDs as well', x.leds_match(), [])

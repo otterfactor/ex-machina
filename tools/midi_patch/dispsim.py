@@ -49,6 +49,27 @@ def idle(status, detail='V0', name='EX-MACHINA'):
     _title(lit, name); _text(lit, detail, 4, 17); _text(lit, status, 4, 25)
     return _pack(lit)
 
+def host_steps(lit, steps, on, first, count, playhead=None):
+    """The host's step overview (SysEx 23) in rows 16-23: column x shows step x*steps//128; the last column of a step 3 or more columns wide stays
+    blank; a set step is rows 18-21, an unset one row 21 (20-21 on every 4th step); the playhead step inverted in rows 17-22; rows 16 and 23 under the
+    visible page."""
+    cols = {}
+    for x in range(128): cols.setdefault(x * steps // 128, []).append(x)
+    for k, xs in cols.items():
+        for x in xs:
+            if first <= k < first + count: lit.update({(x, 16), (x, 23)})
+            if len(xs) >= 3 and x == xs[-1]: continue
+            rows = set(range(18, 22)) if k in on else ({21} if k % 4 else {20, 21})
+            if k == playhead: rows ^= set(range(17, 23))
+            lit.update((x, r) for r in rows)
+def host_screen(lines, overview=None):
+    """The host's picture: text line n on rows 8n..8n+6 from x = 1; with an overview (steps, on, first, count, playhead) it replaces line 2."""
+    lit = set()
+    for n, t in enumerate(lines):
+        if n != 2 or overview is None: _text(lit, t, 1, 8 * n)
+    if overview is not None: host_steps(lit, *overview)
+    return _pack(lit)
+
 def seq_grid(top, steps, cur=None):
     """The sequencer grid: a top line, 16 cells of 8 pixels (columns 1-6 drawn): off = a 2-row bar, on = 10 rows, accent = 14 rows; below, the playhead (3 rows,
     the whole cell) and beat marks every 4 steps (2 rows, 2 pixels)."""

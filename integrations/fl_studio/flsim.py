@@ -21,6 +21,7 @@ class Project:
         self.tempo = 140.0; self.metronome = False; self.swing = 0
         self.hint = ''; self.log = []; self.out = []; self.windows = set()
         self.steps = {}; self.graph = False; self.precount = False; self.looprec = False; self.recpps = 24
+        self.pgroup = -1; self.pgroups = []                         # FL's pattern groups: the selected one (-1 = all patterns), [(name, (pattern numbers))]
 
 P = None
 
@@ -64,6 +65,8 @@ def install(fl2026=True):
     if fl2026:
         def setlen(i, n): log('setPatternLength', i, n); P.pat[i - 1]['length'] = n
         pat_fns['setPatternLength'] = setlen
+        pat_fns.update(getActivePatternGroup=lambda: P.pgroup, getPatternGroupCount=lambda: len(P.pgroups),     # (API 28)
+                       getPatternGroupName=lambda i: P.pgroups[i][0], getPatternsInGroup=lambda i: tuple(P.pgroups[i][1]))
     patterns = _mod('patterns', **pat_fns)
     T = lambda i: P.tracks[i]
     def settv(i, v, pick=0): T(i)['vol'] = v; log('setTrackVolume', i, v)
@@ -114,7 +117,7 @@ def install(fl2026=True):
     device = _mod('device', midiOutMsg=lambda m, *a: P.out.append(('msg', m)), midiOutSysex=lambda b: P.out.append(('sysex', bytes(b))),
                   isAssigned=lambda: True, getName=lambda: 'Maschine Mikro MK3')
     midi = _mod('midi', FPT_TapTempo=106, FPT_Metronome=110, FPT_TempoJog=105, FPT_CountDown=115, FPT_LoopRecord=113, FPT_Copy=51, FPT_Paste=52,
-                widMixer=0, widChannelRack=1, widPlaylist=2, widPianoRoll=3, widBrowser=4, widPluginEffect=6, widPluginGenerator=7)
+                HW_Dirty_Patterns=1024, HW_Dirty_Names=16384, HW_Dirty_ChannelRackGroup=32768, widMixer=0, widChannelRack=1, widPlaylist=2, widPianoRoll=3, widBrowser=4, widPluginEffect=6, widPluginGenerator=7)
     for m in (channels, patterns, mixer, transport, plugins, ui, general, device, midi): sys.modules[m.__name__] = m
     return P
 

@@ -5,7 +5,11 @@
 Install: copy this folder to Documents/Image-Line/FL Studio/Settings/Hardware/Ex-Machina/ (integrations/fl_studio/install.sh does it), then in
 FL Studio: Options > MIDI Settings, pick the Mikro as input, Controller type "Ex-Machina (Maschine Mikro MK3)", and give the input and the
 Mikro's output the same port number (the script talks back through it). Design and button map: docs/fl-studio.md in the Ex-Machina repository."""
-import exm_core
+import exm_tables, exm_settings, exm_out, exm_core
+try:                                                  # FL keeps imported modules across "Update MIDI scripts": load ours again, or a reload would run
+    import importlib                                  # the new device file on the old modules (an old exm_core / exm_settings, then errors)
+    for _m in (exm_tables, exm_settings, exm_out, exm_core): importlib.reload(_m)
+except Exception: pass
 
 ctl = exm_core.Controller()
 
@@ -28,7 +32,7 @@ def OnDeInit():                                       # (also after an error: th
 OnMidiMsg = guarded(lambda event: ctl.midi(event))
 OnSysEx = guarded(lambda event: ctl.on_sysex(event))
 OnIdle = guarded(lambda: ctl.idle())
-OnRefresh = guarded(lambda flags: setattr(ctl, 'dirty', True))
+OnRefresh = guarded(lambda flags: ctl.on_refresh(flags))
 OnDoFullRefresh = guarded(lambda: ctl.refresh(full=True))
 OnUpdateBeatIndicator = guarded(lambda value: ctl.beat_indicator(value))
 OnProjectLoad = guarded(lambda status: setattr(ctl, 'dirty', True))

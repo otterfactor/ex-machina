@@ -275,6 +275,15 @@ CMD_HOST, CMD_TEXT = 0x20, 0x21                        # host mode for a DAW scr
 HOST_SCREEN, HOST_RAW, HOST_QUIET = 1, 2, 4            # the picture is the host's text / pads send 36 + their number - 1 whatever the mode / no firmware messages
 TEXT_COLS = 21
 def host_request(flags): return message(CMD_HOST, bytes([flags & 0x7F]))
+CMD_STEPS = 0x23                                       # the host's step overview in place of text line 2 (no reply)
+def steps_request(steps=0, on=(), first=0, count=16, playhead=None):
+    """STEPS: a pattern of `steps` (1..128) with the steps in `on` set, the visible page first..first+count-1, the playhead step or None;
+    steps=0: text line 2 again."""
+    if not steps: return message(CMD_STEPS, bytes([0]))
+    bits = bytearray((steps + 6) // 7)
+    for k in on:
+        if 0 <= k < steps: bits[k // 7] |= 1 << (k % 7)
+    return message(CMD_STEPS, bytes([1 | (2 if playhead is not None else 0), steps - 1, first, count - 1, playhead or 0]) + bytes(bits))
 def text_request(line, text, col=0):
     """Text on line 0..3 from column `col` (at most 21 - col characters; shown while HOST_SCREEN is set). line None: all four lines blank."""
     if line is None: return message(CMD_TEXT, bytes([0x7F]))
@@ -435,13 +444,14 @@ def _fl_studio():
     press and release, so hold-gestures work), Play and Stop too; with Shift held a few send a second CC (FL_SHIFT_CC). The playing functions stay on the
     device, as in the preset 'Maschine-like modes': Pad Mode / Keyboard / Chords (Shift: scale and chord type), Fixed Vel (Shift: 16 Velocities), Note Repeat
     (Shift: rate), Auto (arp octaves), Lock (latch, Shift: snapshot), the strip modes on Pitch / Mod / Perform / Notes, Shift + Volume / Swing = velocity
-    curve, Shift + Mute = panic. The encoder is relative (two's complement), so FL never jumps; its push is CC 8, its touch sends nothing."""
+    curve, Shift + Mute = panic. The encoder is relative (two's complement), so FL never jumps; its push is CC 8, its touch CC 9 (the script shows the
+    value on touch and keeps the CC from FL, so Link to controller does not learn the touch instead of the turn)."""
     c = bytearray(default_cfg(btn_mode=0, enc_mode=2))
     def act(name, a, par=0xFF, shifted=False):
         k = BUTTON_NAMES.index(name)
         c[FIELDS['btn_act2' if shifted else 'btn_act'][0] + k] = a; c[FIELDS['btn_cc2' if shifted else 'btn_cc'][0] + k] = par
     for name in ('Play', 'Stop'): act(name, ACT_CC, NI_BUTTON_CC[BUTTON_NAMES.index(name)])
-    act('Shift', ACT_SHIFT); act('Encoder Touch', ACT_NONE)          # (FL's Link to controller would learn the touch instead of the turn)
+    act('Shift', ACT_SHIFT)
     act('Pad Mode', ACT_PADMODE); act('Pad Mode', ACT_SCALE, 1, shifted=True)
     act('Keyboard', ACT_KEYS); act('Keyboard', ACT_SCALE, 0, shifted=True)
     act('Chords', ACT_CHORDS); act('Chords', ACT_CHORDTYPE, 0, shifted=True)
@@ -486,8 +496,8 @@ def builtin_presets():
         {'id': 'fl-studio', 'name': 'FL Studio',
          'description': "For FL Studio on a computer with the Ex-Machina device script (integrations/fl_studio): the script turns the buttons into FL's transport, channel, pattern, step sequencer, "
                         "mute / solo, mixer, plug-in and browser controls and shows them on the screen and the LEDs. Pad Mode / Keyboard / Chords, Fixed Vel, Note Repeat (arp), Auto, Lock and the strip modes "
-                        "stay on the device (Shift for their second function, as in Maschine-like modes); Shift + Volume / Swing = velocity curve, Shift + Mute = panic. Pads 1-16 = notes 36-51 (FPC's layout), "
-                        "encoder relative CC 7, strip CC 1. Without the script every button just sends NI's CC.",
+                        "stay on the device (Shift for their second function, as in Maschine-like modes); Shift + Volume / Swing = velocity curve, Shift + Mute = panic. Pads 1-16 = notes 36-51 (the script turns them "
+                        "into FPC's own pad notes or Slicex slices), encoder relative CC 7, its touch CC 9, strip CC 1. Without the script every button just sends NI's CC.",
          'display_name': 'FL STUDIO', 'cfg': _fl_studio()},
         {'id': 'cubasis-3', 'name': 'Cubasis 3 (draft)',
          'description': "Draft, from Steinberg's help and forum posts, not tried. Pads 36-51 (GM kits). Buttons send CC 102-114 once per press (Play, Stop, Rec, Restart, Left, Right, Mute, Solo, Select, Follow, Tap, "

@@ -109,8 +109,8 @@ check('corrupt stored data is ignored', make({ getItem: () => '{"presets": [{"na
 {
   const bi = s.builtins;
   check('every built-in preset is a valid configuration with a unique id and name and a description', bi.every((p) => M.check(p.cfg) === null && p.description.length > 20) && new Set(bi.map((p) => p.id)).size === bi.length && new Set(bi.map((p) => p.name)).size === bi.length);
-  const noTouch = bi.filter((p) => !['default', 'maschine-modes'].includes(p.id)).every((p) => P.describeButton(p.cfg, 40) === 'nothing');
-  check('no app preset lets the encoder touch send anything (an app\'s learn would grab it)', noTouch);
+  const noTouch = bi.filter((p) => !['default', 'maschine-modes', 'fl-studio'].includes(p.id)).every((p) => P.describeButton(p.cfg, 40) === 'nothing');
+  check('no app preset lets the encoder touch send anything (an app\'s learn would grab it); FL Studio\'s script takes CC 9 itself', noTouch && P.describeButton(s.get('fl-studio').cfg, 40) === 'CC 9');
   const gb = s.get('garageband').cfg, fl = s.get('fl-studio-mobile').cfg;
   check('GarageBand: transport is MMC, Note Repeat is CC 64; FL Studio Mobile: pads start at 48, toggle mode, Play is MMC play', P.describeButton(gb, 22) === 'MMC play' && P.describeButton(gb, 17) === 'CC 64'
     && P.padNotes(fl)[0] === 48 && fl[F.btn_mode[0]] === 1 && P.describeButton(fl, 22) === 'MMC play');

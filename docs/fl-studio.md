@@ -35,12 +35,12 @@ A MIDI controller script for FL Studio (desktop, macOS and Windows) that turns t
 - **The device side.** In FL Studio mode the device runs the mapping of the preset **FL Studio** (`mmk3_config._fl_studio()`):
   - Every button the script uses sends its NI CC as a gate (press 127, release 0), Play and Stop too, not MIDI Start / Stop.
   - With Shift held, a few buttons send a second CC 102-110 (`FL_SHIFT_CC`). Shift itself is the device's modifier, so the device's own Shift functions still work.
-  - The encoder sends relative CC 7 (two's complement); its push is CC 8. Its touch sends nothing, because FL's *Link to controller* would learn the touch instead of the turn.
-  - The pads send notes 36-51, which is FPC's default layout.
+  - The encoder sends relative CC 7 (two's complement); its push is CC 8, its touch CC 9 (since 2026-10-21; before, it sent nothing). The script always handles CC 9, so FL's *Link to controller* should never see it and cannot learn the touch instead of the turn (to verify in FL: learn a parameter by turning the encoder).
+  - The pads send notes 36-51; on an FPC or Slicex channel the script turns them into the plug-in's own notes (below).
   - Without the script, the preset is a plain CC controller.
 - **The tables.** `gen_tables.py` copies what the script needs from the repository into `exm_tables.py`: the CC of every button with and without Shift, the pad and button LED indices, the font and the command numbers. FL cannot import the repository. `gen_tables.py --check` in `run_tests.sh` fails when the copy is stale.
 - **Host mode and the fallback.** When it takes over, the script sends HOST (SCREEN).
-  - **A firmware with host mode** answers `60`. From then on the script writes its four screen lines with TEXT (29 bytes per changed line). While a pad grid mode is on, it sends HOST SCREEN | RAW, so the pads send notes 36-51 whatever the device's own pad mode. Outside the grid modes the pads play whatever the device's mode is, Keyboard and Chords included.
+  - **A firmware with host mode** answers `60`. From then on the script writes its four screen lines with TEXT (29 bytes per changed line). While a pad grid mode is on, or a drum layout plays (below), it sends HOST SCREEN | RAW, so the pads send notes 36-51 whatever the device's own pad mode. Otherwise the pads play whatever the device's mode is, Keyboard and Chords included.
   - **No answer within a second** (an older firmware): the script draws the same four lines as two pixel regions (SysEx 01, at least 12 ms apart, one per `OnIdle`). It draws them again every 2 s, because that firmware draws its own idle screen when its status changes. The grid modes then need the device in Pad Mode, since in Keyboard mode a pad's note is not its number.
 - **The LEDs.** One Note On on channel 2 per LED that changed (velocity = colour code). The firmware makes a host-set colour the LED's resting colour, so its local hit / press flash still works on top. FL colours are matched to the nearest of the device's 16 hues, and greys become white.
 - **The screen.**
@@ -49,7 +49,8 @@ A MIDI controller script for FL Studio (desktop, macOS and Windows) that turns t
   - Line 3: the pattern.
   - Line 4: the tempo and PLAY / STOP / REC.
   - A changed value replaces lines 2-3 for 1.5 s, for example `VOL KICK / 88%` or `OSC 2 COARSE / -12 ST`.
-- **Robustness.** Every FL function goes through `call()`, which returns a default when this FL version lacks the function or refuses the call. A missing 2026 function shows `NEEDS FL STUDIO 2026` instead of stopping the script. `OnDeInit` sends HOST 0, and a SET / RESET / slot load from another tool ends host mode too.
+  - **Step overview** (`STEP_OVERVIEW`, 2026-10-21): in Step mode, line 3 is the whole pattern (the 128-step stretch holding the pads' page) as a strip: set steps tall, the pads' page bracketed, the playhead inverted while FL plays. The firmware draws it (SysEx 23 STEPS, `docs/remap-protocol.md`), because every TEXT redraws the whole picture and would wipe pixels the script drew. It is off while a message shows, so both message lines can be read. An older firmware ignores STEPS and keeps the text line.
+- **Robustness.** FL keeps a script's imported modules across *Update MIDI scripts*, so `device_ExMachina.py` loads `exm_tables`, `exm_settings`, `exm_out` and `exm_core` again itself (`importlib.reload`); without that, a reload after an update can run the new device file on the old modules and stop the script (the likely cause of what was seen on 2026-10-21 after the step-17 update: the Step LED stayed lit and the device held none of the script's text). A settings file lacking newer settings gets their defaults (`exm_core.SETTINGS`). A HOST the device does not confirm (it drops a request that arrives while it is busy) is sent again after 0.5 s. Every FL function goes through `call()`, which returns a default when this FL version lacks the function or refuses the call. A missing 2026 function shows `NEEDS FL STUDIO 2026` instead of stopping the script. `OnDeInit` sends HOST 0, and a SET / RESET / slot load from another tool ends host mode too.
 
 ## The map
 Shift + X means X pressed while Shift is held. "Device" means the firmware does it; the script never sees it.
@@ -64,11 +65,11 @@ Shift + X means X pressed while Shift is held. "Device" means the firmware does 
 | Tap / Shift + Tap | tap tempo (the beat blinks on Tap) / metronome |
 | Follow | pattern / song mode (lit in song mode) |
 | Shift + Left / Right | undo / redo |
-| Left / Right | the page in a grid mode; the parameter in Plug-in; folders in Browser; else the previous / next channel |
+| Left / Right | the page in a grid mode; the parameter in Plug-in; folders in Browser; on a drum-layout channel its banks first (FPC A / B, slice pages), then the previous / next channel; else the previous / next channel |
 | Select | pads = channels 1-16 (pages of 16): select; colour = the channel's, the selected one bright |
 | Mute / Solo | pads = channels: mute (dims) / solo (bright, the others dark); in Group mode: `mixer.muteTrack` / `soloTrack` of the selected insert |
 | Shift + Solo | every mute and solo off (`isChannelSolo` / `soloChannel`, `isChannelMuted` / `muteChannel(i, 0)`; in Group mode the inserts) |
-| Pattern | pads = patterns 1-16 (pages): jump; the next free one dim white |
+| Pattern | pads = the patterns of FL's selected pattern group (`getActivePatternGroup` / `getPatternsInGroup`, API 28), all patterns when none is selected (pages): jump; with all patterns, the next free one dim white and its pad makes a new pattern (not in a group: FL's API does not say which group a new pattern joins) |
 | Group | pads = mixer inserts 1-16 (8 pages): select; Volume / Sampling then turn that insert's volume / pan |
 | Step | pads = 16 steps of the selected channel (pages of 16 up to the pattern length); the playhead is a white pad; Erase = clear the channel, Shift + Erase = every channel; Shift + Step = the encoder sets the pattern length (FL 2026) |
 | Step: hit / hold | a hit sets the step with the hit's velocity (`setStepParameterByIndex(getChannelIndex(c), patternNumber(), step, 1, vel, True)`, as Image-Line's Fire script does; `STEP_VELOCITY`); an on step hit again goes off on release unless edited; held steps are white; **hold + encoder** edits the step parameter Events chooses (velocity, pitch, fine pitch, pan, release, Mod X, Mod Y, shift; defaults and maxima as the Fire's), `showGraphEditor` on it (`GRAPH_EDITOR`); off steps dim in the channel colour |
@@ -82,15 +83,20 @@ Shift + X means X pressed while Shift is held. "Device" means the firmware does 
 | Favorites | open the selected channel's plug-in window |
 | Encoder with no target | `ui.jog` in the focused window, push = enter |
 | Pad Mode / Keyboard / Chords / Fixed Vel / Note Repeat / Auto / Lock / Pitch / Mod / Perform / Notes, Shift + Volume / Swing, Shift + Mute | device (as in *Maschine-like modes*): the notes go to FL. Turn on *Send master sync* for the Mikro's output in FL's MIDI settings so the arp follows FL's tempo |
-| Scene, Variation (Events outside Step mode) | not used: their CCs go to FL (MIDI learn / Link to controller) |
+| Variation | pads = 16 parameters of the selected channel's plug-in (pages): the names `PLUGIN_PAGES` lists for that plug-in, in that order, else every parameter that has a name (the first 4,096 are searched, once per channel and plug-in); colours in turn red, orange, yellow, green, lime, cyan, violet, fuchsia, the chosen one bright; a pad chooses the parameter and makes the encoder's target Plug-in; the plug-in window comes forward (`FOCUS_WINDOWS`) |
+| Encoder touch (CC 9) | shows what the encoder would change and its value without changing it (held steps: their parameter), on the screen while touched (`TOUCH_PREVIEW`) |
+| Scene (Events outside Step mode) | not used: their CCs go to FL (MIDI learn / Link to controller) |
 | Project | the Playlist and the Channel Rack in turn (FL Studio mode: CC 38); Shift + Project: the device's mode switch |
 
 **Feedback and conveniences (2026-10-21, from the research in `reports/FL Studio integration ideas.md`).** The strip LEDs show the encoder target as a bar (pan bipolar from the centre) or the song position while playing (`STRIP_BAR`); Left / Right are dark where they cannot move; every message also goes to FL's hint bar (`ui.setHintMsg`, `HINT_BAR`); mode buttons bring the matching window forward (`FOCUS_WINDOWS`: Channel Rack, Mixer for Group, the plug-in window for Plug-in). Settings live in `Ex-Machina/exm_settings.py`. Every callback is guarded (`device_ExMachina.guarded`): an exception prints its traceback to *View > Script output*, the script stands down for good, the device keeps only its screen (HOST SCREEN, `SCRIPT ERROR`) and FL gets plain MIDI; OnDeInit still sends HOST 0.
 
-**Play mode** (no grid mode): the pads go straight to FL, so the selected channel plays them. On an FPC channel, the pad LEDs take FPC's pad colours (`plugins.getPadInfo`). On any other channel they all take the channel's colour.
+**Play mode** (no grid mode): the pads go straight to FL, so the selected channel plays them, and take the channel's colour. **Drum layouts** (`DRUM_LAYOUTS`, as FLkey's Drum mode): on an **FPC** channel pad *n* plays FPC's pad *n* (its note from `plugins.getPadInfo(c, -1, 1, k)`, bottom left = pad 1 as in FPC), in FPC's pad colours, 16 pads per bank (A, B); on **Slicex / Fruity Slicer** pad 1 plays slice 1 = note 60, as Image-Line's Fire script plays them, 16 slices per page (5 pages up to note 127). The script changes the note (`event.data1`) and leaves the event to FL, as the Fire does; the release goes to the note the press started even if the bank changed in between. On such a channel the device's pads are a raw grid (HOST RAW), so the device's Keyboard / Chords modes do not apply; the title says the bank (`PLAY FPC BANK A`, `PLAY SLICES 17-32`).
+
+**FL's groups.** The channel functions count within FL's Channel Rack group (`channelCount()`, `selectOneChannel(i)` and so on without the global flag), so Select / Mute / Solo / Step follow the group FL shows. When the group changes (OnRefresh `HW_Dirty_ChannelRackGroup`) the pages are brought back into range, held steps are dropped and the screen says how many channels the group has (FL's API has no group name); an empty group says so and the pads do nothing. Step parameters and the graph editor use `getChannelIndex` (the global index), as the Fire does.
 
 ## What is not covered, and why
-- **Groups and sounds as in Maschine.** FL's Channel Rack has no groups of 16. Select / Mute / Solo work on pages of 16 channels instead.
+- **Groups and sounds as in Maschine.** FL's Channel Rack has no groups of 16. Select / Mute / Solo work on pages of 16 channels of FL's Channel Rack group instead.
+- **Curated plug-in pages.** `PLUGIN_PAGES` is empty: which parameters of FL's own instruments deserve the pads needs their exact names from FL (Link to controller lists them), which no document gives.
 - **Scenes and the arranger.** Playlist performance mode and arrangement markers exist in the API but are left for later.
 - **Automation recording (AUTO).** The device uses Auto for the arp octaves.
 - **Note Repeat in FL's own sequencer.** (Per-step velocity and the step parameters are edited from the pads and the encoder since 2026-10-21.)
@@ -99,7 +105,7 @@ Shift + X means X pressed while Shift is held. "Device" means the firmware does 
 
 ## Testing
 - `integrations/fl_studio/test_fl_script.py`:
-  - **Part 1** runs the real script against `flsim.py`. That is a small project (4 channels, an FPC, a 3x Osc with parameters, 2 patterns, mixer inserts) behind the signatures of FL's API reference, with every call logged.
+  - **Part 1** runs the real script against `flsim.py`. That is a small project (4 channels, an FPC, a 3x Osc with parameters, 2 patterns, pattern groups, mixer inserts) behind the signatures of FL's API reference, with every call logged.
   - **Part 2** (with `patched.bin data_init.bin`) connects the script to the emulated firmware both ways. The device's MIDI goes to the script, and the script's LEDs, HOST and TEXT go to the device. It then compares the LEDs and the screen pixels the device ends up with against what the script meant, with host mode and with the pixel fallback. In particular, Step mode on the device while the device's Keyboard mode is on still sets steps 1 and 16 from pads 1 and 16.
 - `tools/midi_patch/test_host.py` tests the firmware side.
 - Both run in `run_tests.sh`.

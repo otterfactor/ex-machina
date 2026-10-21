@@ -38,6 +38,7 @@ def text():
     L.append(f'COLOURS = {mc.COLOUR_NAMES!r}                     # colour code = colour * 4 + brightness; colour 1 = the first name')
     L.append(f'FONT = bytes.fromhex({bp.FONT.hex()!r})   # ASCII 32..95, 5 column bytes each, bit 0 = top row')
     L.append(f'CMD_HOST, CMD_TEXT = {mc.CMD_HOST:#04x}, {mc.CMD_TEXT:#04x}')
+    L.append(f'CMD_STEPS = {mc.CMD_STEPS:#04x}                                 # the step overview in place of text line 2 (Step mode, long patterns)')
     L.append(f'HOST_SCREEN, HOST_RAW, HOST_QUIET = {mc.HOST_SCREEN}, {mc.HOST_RAW}, {mc.HOST_QUIET}')
     L.append(f'SHIFT_REPORT_CC = {mc.FL_SHIFT_REPORT_CC}                            # the device sends Shift down / up as this CC (FL Studio mode)')
     L.append('STRIP_LED0, STRIP_LEDS = 55, 25                       # the touch-strip LEDs, left to right (translate.c STRIP_LED0)')

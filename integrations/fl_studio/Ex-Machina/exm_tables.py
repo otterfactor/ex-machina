@@ -4,7 +4,7 @@
 CHANNEL = 0                                   # MIDI channel of the controls (0 = 1)
 LED_CHANNEL = 1                               # LED n = Note On n on this channel, velocity = colour code
 ENC_CC, STRIP_CC = 7, 1                        # the encoder (relative, two's complement) and the strip
-BUTTON_CC = {'Project': 38, 'Favorites': 39, 'Browser': 40, 'Volume': 44, 'Swing': 46, 'Tempo': 48, 'Plug-in': 45, 'Sampling': 47, 'Left': 41, 'Right': 42, 'Group': 34, 'Restart': 53, 'Erase': 54, 'Tap': 55, 'Follow': 56, 'Play': 57, 'Rec': 58, 'Stop': 59, 'Step': 83, 'Scene': 85, 'Pattern': 86, 'Events': 87, 'Variation': 88, 'Duplicate': 89, 'Select': 90, 'Solo': 91, 'Mute': 92, 'Encoder Push': 8}
+BUTTON_CC = {'Project': 38, 'Favorites': 39, 'Browser': 40, 'Volume': 44, 'Swing': 46, 'Tempo': 48, 'Plug-in': 45, 'Sampling': 47, 'Left': 41, 'Right': 42, 'Group': 34, 'Restart': 53, 'Erase': 54, 'Tap': 55, 'Follow': 56, 'Play': 57, 'Rec': 58, 'Stop': 59, 'Step': 83, 'Scene': 85, 'Pattern': 86, 'Events': 87, 'Variation': 88, 'Duplicate': 89, 'Select': 90, 'Solo': 91, 'Mute': 92, 'Encoder Push': 8, 'Encoder Touch': 9}
 SHIFT_CC = {'Browser': 108, 'Plug-in': 105, 'Left': 103, 'Right': 104, 'Restart': 114, 'Erase': 109, 'Tap': 102, 'Play': 110, 'Rec': 113, 'Step': 107, 'Pattern': 106, 'Solo': 115, 'Encoder Push': 112}
 LOCAL = ['Auto', 'Chords', 'Fixed Vel', 'Keyboard', 'Lock', 'Mod', 'Note Repeat', 'Notes', 'Pad Mode', 'Perform', 'Pitch', 'Shift']                     # buttons the device handles itself (they send no CC)
 PAD_NOTE = {1: 36, 2: 37, 3: 38, 4: 39, 5: 40, 6: 41, 7: 42, 8: 43, 9: 44, 10: 45, 11: 46, 12: 47, 13: 48, 14: 49, 15: 50, 16: 51}
@@ -13,6 +13,7 @@ BUTTON_LED = {'Project': 0, 'Favorites': 1, 'Browser': 2, 'Volume': 3, 'Swing': 
 COLOURS = ['red', 'orange', 'light orange', 'warm yellow', 'yellow', 'lime', 'green', 'mint', 'cyan', 'turquoise', 'blue', 'plum', 'violet', 'purple', 'magenta', 'fuchsia', 'white']                     # colour code = colour * 4 + brightness; colour 1 = the first name
 FONT = bytes.fromhex('000000000000005f00000007000700147f147f14242a7f2a12231308646236495620500000070000001c2241000041221c0014083e081408083e080800503000000808080808006060000020100804023e5149453e00427f400042615149462141454b311814127f1027454545393c4a49493001710905033649494936064949291e003636000000563600000814224100141414141400412214080201510906324979413e7e1111117e7f494949363e414141227f4141221c7f494949417f090909013e414949797f0808087f00417f41002040413f017f081422417f404040407f020c027f7f0408107f3e4141413e7f090909063e4151215e7f09192946464949493101017f01013f4040403f1f2040201f3f4038403f631408146307087008076151494543007f41410002040810200041417f0004020102044040404040')   # ASCII 32..95, 5 column bytes each, bit 0 = top row
 CMD_HOST, CMD_TEXT = 0x20, 0x21
+CMD_STEPS = 0x23                                 # the step overview in place of text line 2 (Step mode, long patterns)
 HOST_SCREEN, HOST_RAW, HOST_QUIET = 1, 2, 4
 SHIFT_REPORT_CC = 111                            # the device sends Shift down / up as this CC (FL Studio mode)
 STRIP_LED0, STRIP_LEDS = 55, 25                       # the touch-strip LEDs, left to right (translate.c STRIP_LED0)

@@ -142,6 +142,30 @@ check('a slot load that fails (empty slot) leaves it on', (r['status'], x.sc.fb(
 x = T(); x.d.ask(mc.slot_store_request(0)); x.host(1); x.text(0, 'STAYS'); x.tap('Project'); x.sc.settle()
 check('the Project button\'s slot change does not end it (the script is still there)', x.sc.fb() == host_picture(['STAYS']))
 
+# ---- STEPS: the step overview in place of text line 2 --------------------------------------------------------------------------------------------
+from dispsim import host_screen
+x = T(); x.host(mc.HOST_SCREEN)
+lines = ['STEP 2/4', 'KICK', 'PAT 1 PATTERN 1', '120.0 BPM        PLAY']
+for n, t in enumerate(lines): x.text(n, t.ljust(21))
+on = {0, 4, 8, 12, 17, 18, 31, 40, 63}
+x.d.send_sysex(mc.steps_request(64, on, 16, 16, 18)); x.sc.settle()
+check('STEPS (64 steps, page 17-32, playhead 19): the overview replaces line 2, pixel by pixel (2 columns per step)', x.sc.fb() == host_screen(lines, (64, on, 16, 16, 18)))
+for steps, first, cnt, ph in ((32, 0, 16, None), (128, 112, 16, 127), (16, 0, 16, 3), (48, 32, 16, 47), (20, 16, 4, 0)):
+    x.d.send_sysex(mc.steps_request(steps, on, first, cnt, ph)); x.sc.settle()
+    check('STEPS %d steps, page %d+%d, playhead %s: as the reference (step widths %s)' % (steps, first, cnt, ph, sorted({sum(1 for c in range(128) if c * steps // 128 == k) for k in range(steps)})),
+          x.sc.fb() == host_screen(lines, (steps, on, first, cnt, ph)))
+good = host_screen(lines, (20, on, 16, 4, 0))
+for name, msg in (('a page beyond the steps', mc.steps_request(32, on, 24, 16)), ('a playhead beyond the steps', mc.steps_request(32, on, 0, 16, 32)),
+                  ('a short bitmap', mc.steps_request(32, on)[:-2] + bytes([0xF7])), ('an unknown flag', mc.message(mc.CMD_STEPS, bytes([5, 31, 0, 15, 0]) + bytes(5)))):
+    x.d.send_sysex(msg); x.sc.settle()
+    check('STEPS with %s is ignored: the overview stays as it was' % name, x.sc.fb() == good)
+x.text(1, 'SNARE'); x.sc.settle()
+check('TEXT keeps the overview (line 1 changes, line 2 stays the overview)', x.sc.fb() == host_screen([lines[0], 'SNARE', lines[2], lines[3]], (20, on, 16, 4, 0)))
+x.d.send_sysex(mc.steps_request(0)); x.sc.settle()
+check('STEPS 0: line 2 is the text again', x.sc.fb() == host_picture([lines[0], 'SNARE', lines[2], lines[3]]))
+x.d.send_sysex(mc.steps_request(32, on)); x.host(0); x.sc.settle(); x.host(mc.HOST_SCREEN); x.text(2, 'TEXT'); x.sc.settle()
+check('entering host mode again: no overview (line 2 is text)', x.sc.fb() == host_picture(['', '', 'TEXT']))
+
 # ---- TEXT in the middle of a screen write -----------------------------------------------------------------------------------------------------------
 fails, points = [], 0
 for after in range(5, 4000, 37):

@@ -14,6 +14,12 @@ import exm_tables as t
 import exm_out as out
 import exm_settings as cfg
 
+# Every setting with its default: a settings file from an older version of the script (kept, or still loaded by FL) lacks the newer ones.
+SETTINGS = dict(STEP_VELOCITY=True, FOCUS_WINDOWS=True, GRAPH_EDITOR=True, LOOP_RECORD_ON_CONNECT=False, SCORE_LOG_SECONDS=300, MESSAGE_SECONDS=1.5,
+                STRIP_BAR=True, HINT_BAR=True, DRUM_LAYOUTS=True, STEP_OVERVIEW=True, TOUCH_PREVIEW=True, PLUGIN_PAGES={})
+for _k, _v in SETTINGS.items():
+    if not hasattr(cfg, _k): setattr(cfg, _k, _v)
+
 def now(): return time.time()
 
 def call(mod, name, *args, default=None):
@@ -27,12 +33,12 @@ def has(mod, name): return callable(getattr(mod, name, None))
 CC_NAME = {cc: n for n, cc in t.BUTTON_CC.items()}
 CC_NAME.update({cc: 'Shift+' + n for n, cc in t.SHIFT_CC.items()})
 NOTE_PAD = {note: pad for pad, note in t.PAD_NOTE.items()}
-PUSH, TOUCH = t.BUTTON_CC.get('Encoder Push'), t.BUTTON_CC.get('Encoder Touch')
-GRID = ('select', 'mute', 'solo', 'pattern', 'group', 'step')
-MODE_BUTTON = {'Select': 'select', 'Mute': 'mute', 'Solo': 'solo', 'Pattern': 'pattern', 'Group': 'group', 'Step': 'step'}
+PUSH, TOUCH = t.BUTTON_CC.get('Encoder Push'), t.BUTTON_CC.get('Encoder Touch', 9)     # (a firmware before the touch was switched on sends no touch)
+GRID = ('select', 'mute', 'solo', 'pattern', 'group', 'step', 'variation')
+MODE_BUTTON = {'Select': 'select', 'Mute': 'mute', 'Solo': 'solo', 'Pattern': 'pattern', 'Group': 'group', 'Step': 'step', 'Variation': 'variation'}
 TARGET_BUTTON = {'Volume': 'volume', 'Swing': 'swing', 'Tempo': 'tempo', 'Sampling': 'pan', 'Plug-in': 'plugin', 'Browser': 'browser',
                  'Shift+Plug-in': 'preset', 'Shift+Step': 'length'}
-MODE_TITLE = {'play': 'PLAY', 'select': 'SELECT', 'mute': 'MUTE', 'solo': 'SOLO', 'pattern': 'PATTERN', 'group': 'MIXER', 'step': 'STEP'}
+MODE_TITLE = {'play': 'PLAY', 'select': 'SELECT', 'mute': 'MUTE', 'solo': 'SOLO', 'pattern': 'PATTERN', 'group': 'MIXER', 'step': 'STEP', 'variation': 'PARAMS'}
 MSG_S = cfg.MESSAGE_SECONDS                         # how long a value stays on the screen
 # The step parameters a held step's encoder edits (Events cycles them): name, FL's parameter number, default, maximum, step per click.
 # Numbers, defaults and maxima as FL's API reference and Image-Line's Akai Fire script use them.
@@ -42,8 +48,15 @@ STEP_PARAMS = (('VELOCITY', 1, 100, 127, 1), ('PITCH', 0, 60, 127, 1), ('FINE PI
 # 11 COPY, 12 PASTE. FL has one undo history, so 3 / 4 do what 1 / 2 do. A 50 % quantize (notes halfway to the grid) is not in FL's MIDI-script API
 # (quickQuantize has only a start-only flag), so 6 quantizes the note starts only, and the screen says so.
 SHIFT_PAD = {1: 'undo', 2: 'redo', 3: 'undo', 4: 'redo', 5: 'quantize', 6: 'quantize_starts', 9: 'clear', 11: 'copy', 12: 'paste'}
+# Drum layouts in play mode: the pads follow the selected channel's plug-in. FPC: its own pad notes (plugins.getPadInfo), 16 pads per bank (A, B);
+# Slicex / Fruity Slicer: slice 1 = note 60 (C5) on pad 1, 16 slices per page, as Image-Line's Akai Fire script plays them.
+SLICERS = ('Slicex', 'Fruity Slicer')
+SLICE_NOTE0 = 60
+PARAM_COLOURS = (1, 2, 5, 7, 6, 9, 13, 16)          # Variation: the pads' colours, in turn (red, orange, yellow, green, lime, cyan, violet, fuchsia)
+PARAM_SCAN = 4096                                   # Variation: how many of a plug-in's parameters are searched for names (VSTs report thousands)
 STRIP_COLOUR = {'volume': 7, 'pan': 9, 'tempo': 2, 'swing': 13, 'plugin': 11, 'preset': 11, 'length': 5}   # the strip bar's hue per encoder target
 PROBE_S = 1.0                                       # how long the script waits for the answer to HOST before drawing pixels
+HOST_RETRY_S = 0.5                                  # HOST not confirmed by then: sent again (the device drops a request that comes while it is busy)
 REGION_S = 0.012                                    # pixel regions at least 10 ms apart (the firmware drops one that comes too soon)
 PLAY_REFRESH_S = 0.05                               # while FL plays: the playhead, the transport LEDs, the tempo
 PIXEL_REFRESH_S = 2.0                               # without host mode the firmware may draw its own screen: draw ours again this often
@@ -55,11 +68,11 @@ class Controller:
         self.param = 0; self.push = False
         self.used = set()                                            # buttons whose press the script took
         self.host_ok = None; self.probe_t = 0.0                     # None: not known yet, True: the firmware has host mode, False: pixels
-        self.leds = {}; self.lines = [''] * 4; self.sent_lines = [None] * 4
+        self.leds = {}; self.lines = [''] * 4; self.sent_lines = [None] * 4; self.sent_steps = None    # sent_steps: the last STEPS (overview) message
         self.msg = None; self.msg_t = 0.0                            # temporary lines 2-3 (a value), until msg_t
         self.beat = 0; self.dirty = True; self.refresh_t = 0.0
         self.px_queue = []; self.px_t = 0.0; self.px_drawn = 0.0
-        self.host_flags = None
+        self.host_flags = None; self.host_want = None; self.host_t = 0.0   # the flags the device confirmed, those last sent and when
         self.active = None; self.mode_t = 0.0                       # None: the device's mode not known yet, True: FL Studio mode, False: Standalone
         self.broken = False                                         # an error stopped the script (fail())
         self.win = None                                             # the window Project showed last (Playlist / Channel Rack)
@@ -67,6 +80,10 @@ class Controller:
         self.shift_pads = set()                                     # pads pressed with Shift held: their release is ours too
         self.held = {}                                              # Step mode: held steps -> 'new' (set by this press) / 'on' (was on: off on release, unless edited) / 'edited'
         self.step_param = 0                                         # which STEP_PARAMS entry the encoder edits on held steps
+        self.bank = 0; self.bank_chan = None                        # play mode: the drum layout's bank (FPC A / B, slice page) and the channel it is for
+        self.sounding = {}                                          # play mode: pad -> the note it started (its Note Off goes to the same note)
+        self.touch = False                                          # the encoder is touched (its value stays on the screen)
+        self.params = None; self.params_key = None                  # Variation: the plug-in parameters on the pads (indexes), and what they were found for
 
     # ---- FL Studio callbacks --------------------------------------------------------------------------------------------------------------------
     def init(self):
@@ -75,23 +92,24 @@ class Controller:
         if cfg.LOOP_RECORD_ON_CONNECT and not call(ui, 'isLoopRecEnabled', default=True): call(transport, 'globalTransport', midi.FPT_LoopRecord, 1)
 
     def activate(self):
-        self.active = True
-        self.leds = {}; self.sent_lines = [None] * 4; self.host_ok = None; self.host_flags = None; self.px_queue = []
+        self.active = True; self.sent_steps = None
+        self.leds = {}; self.sent_lines = [None] * 4; self.host_ok = None; self.host_flags = None; self.host_want = None; self.px_queue = []
         self.probe_t = now(); self.send_host()
         self.refresh(full=True)
 
     def deactivate(self):
         """Standalone mode: the device has ended host mode and gone back to its own mapping, LEDs and screen; the script forgets them."""
-        self.active = False
-        self.leds = {}; self.sent_lines = [None] * 4; self.host_ok = None; self.host_flags = None; self.px_queue = []
+        self.active = False; self.sent_steps = None
+        self.leds = {}; self.sent_lines = [None] * 4; self.host_ok = None; self.host_flags = None; self.host_want = None; self.px_queue = []
         self.mode = 'play'; self.target = None; self.msg = None; self.used = set(); self.shift = False; self.shift_pads = set(); self.held = {}
+        self.sounding = {}; self.touch = False
 
     def fail(self):
         """An error in a callback (device_ExMachina.guarded): stand down for good. The device keeps its screen for the message (host mode SCREEN only, so
         the pads are its own again) and the script lets every MIDI message through to FL from now on."""
         self.broken = True
         try:
-            if self.active and self.host_ok:
+            if self.active and self.host_ok is not False:            # (also before the answer to HOST: a firmware without it ignores both)
                 self.sysex(out.host(t.HOST_SCREEN))
                 for n, line in enumerate(('SCRIPT ERROR', 'SEE FL STUDIO:', 'VIEW > SCRIPT OUTPUT', 'PLAIN MIDI NOW')): self.sysex(out.text_line(n, line))
         except Exception: pass
@@ -112,7 +130,7 @@ class Controller:
             if n == t.SHIFT_REPORT_CC: ev.handled = True; self.shift_btn(v > 0); return
             if n == t.ENC_CC: ev.handled = True; self.turn(v if v < 64 else v - 128); return
             if n == PUSH: ev.handled = True; self.push_btn(v > 0); return
-            if n == TOUCH: ev.handled = True; (self.show_value() if v else None); return
+            if n == TOUCH: ev.handled = True; self.touch_enc(v > 0); return
             name = CC_NAME.get(n)
             if name and self.button(name, v > 0): ev.handled = True
         elif st in (0x80, 0x90):
@@ -122,7 +140,14 @@ class Controller:
                 if down: self.shift_pads.add(pad); self.shift_pad(pad)
                 else: self.shift_pads.discard(pad)
                 return
-            if self.mode not in GRID: return
+            if pad and not down and pad in self.sounding:                     # a drum pad let go: the note it started, whatever changed since
+                ev.data1 = self.sounding.pop(pad); return
+            if self.mode not in GRID:
+                if pad and down and self.layout():                            # a drum layout: the pad plays the plug-in's pad / slice
+                    nt = self.drum_note(pad)
+                    if nt is None: ev.handled = True; return
+                    ev.data1 = self.sounding[pad] = nt
+                return
             ev.handled = True
             if not pad: return
             if down: self.pad(pad, ev.data2)
@@ -142,7 +167,7 @@ class Controller:
         if r is None: return
         ev.handled = True
         if self.host_ok is None or not self.host_ok:
-            self.host_ok = r[0]; self.sent_lines = [None] * 4; self.dirty = True
+            self.host_ok = r[0]; self.sent_lines = [None] * 4; self.sent_steps = None; self.dirty = True
         self.host_flags = r[1]
 
     def idle(self):
@@ -150,6 +175,7 @@ class Controller:
         if self.active is None and tm - self.mode_t > PROBE_S: self.activate()      # no answer to MODE: a firmware without modes, run as before
         if not self.active: return
         if self.host_ok is None and tm - self.probe_t > PROBE_S: self.host_ok = False; self.sent_lines = [None] * 4
+        if self.host_ok and self.host_want is not None and self.host_flags != self.host_want and tm - self.host_t > HOST_RETRY_S: self.send_host()
         if self.msg and tm > self.msg_t: self.msg = None; self.dirty = True
         if self.dirty or (tm - self.refresh_t > PLAY_REFRESH_S and call(transport, 'isPlaying', default=False)): self.refresh()
         if self.host_ok is False and tm - self.px_drawn > PIXEL_REFRESH_S: self.sent_lines = [None] * 4; self.draw()
@@ -192,7 +218,10 @@ class Controller:
         elif name in ('Left', 'Right'): self.arrow(-1 if name == 'Left' else 1)
         elif name in MODE_BUTTON:
             m = MODE_BUTTON[name]; self.mode = 'play' if self.mode == m else m; self.held = {}; self.send_host()
-            if self.mode != 'play': self.focus(midi.widMixer if self.mode == 'group' else midi.widChannelRack)
+            if self.mode == 'variation':
+                self.params = None
+                if cfg.FOCUS_WINDOWS and call(plugins, 'isValid', self.chan(), default=False): call(channels, 'showEditor', self.chan(), 1); call(channels, 'focusEditor', self.chan())
+            elif self.mode != 'play': self.focus(midi.widMixer if self.mode == 'group' else midi.widChannelRack)
             self.message(MODE_TITLE[self.mode], self.mode_hint())
         elif name in TARGET_BUTTON:
             tg = TARGET_BUTTON[name]; self.target = None if self.target == tg else tg
@@ -224,6 +253,8 @@ class Controller:
             self.message(MODE_TITLE[self.mode], 'PAGE %d/%d' % (self.page[self.mode] + 1, n))
         elif self.target == 'plugin': self.param = self.next_param(self.param, d); self.show_value()
         elif self.target == 'browser': call(ui, 'left' if d < 0 else 'right')
+        elif self.layout() and 0 <= self.cur_bank() + d < self.banks():      # a drum layout: its banks first, then the next channel
+            self.bank = self.cur_bank() + d; self.message(self.chan_name(), self.bank_text())
         else:
             c = max(0, min(call(channels, 'channelCount', default=1) - 1, self.chan() + d))
             call(channels, 'selectOneChannel', c); self.message('CHANNEL', self.chan_name())
@@ -237,6 +268,8 @@ class Controller:
     # ---- pads in a grid mode --------------------------------------------------------------------------------------------------------------------
     def pad(self, n, vel=100):
         i = self.page[self.mode] * 16 + n - 1
+        if self.mode in ('step', 'select', 'mute', 'solo') and not call(channels, 'channelCount', default=0):
+            self.message(MODE_TITLE[self.mode], 'NO CHANNELS IN GROUP'); return
         if self.mode == 'step':                                    # a step: on at once (with the hit's velocity); an on step goes off when let go,
             c = self.chan()                                        # unless the encoder edited it while held
             if call(channels, 'getGridBit', c, i, default=False): self.held[i] = 'on'
@@ -244,7 +277,14 @@ class Controller:
                 call(channels, 'setGridBit', c, i, 1); self.held[i] = 'new'
                 if cfg.STEP_VELOCITY: self.set_step(c, i, 1, vel)
                 self.message('STEP %d' % (i + 1), 'VELOCITY %d' % (vel if cfg.STEP_VELOCITY else 100))
-        elif self.mode == 'pattern': call(patterns, 'jumpToPattern', i + 1); self.message('PATTERN', self.pattern_name())
+        elif self.mode == 'pattern':
+            pl = self.pattern_list()
+            if i < len(pl): call(patterns, 'jumpToPattern', pl[i]); self.message('PATTERN', self.pattern_name())
+            elif i == len(pl) and self.pattern_group() < 0:                # the pad after the last pattern: a new one (only when all patterns show)
+                call(patterns, 'jumpToPattern', (call(patterns, 'patternCount', default=0) or 0) + 1); self.message('PATTERN', 'NEW ' + self.pattern_name())
+        elif self.mode == 'variation':
+            pl = self.param_list()
+            if i < len(pl): self.param = pl[i]; self.target = 'plugin'; self.show_value()
         elif self.mode == 'group': call(mixer, 'setTrackNumber', i + 1); self.message('MIXER', call(mixer, 'getTrackName', i + 1, default=''))
         elif i < call(channels, 'channelCount', default=0):
             if self.mode == 'select': call(channels, 'selectOneChannel', i); self.message('CHANNEL', call(channels, 'getChannelName', i, default=''))
@@ -287,6 +327,88 @@ class Controller:
         if down: self.msg = ('SHIFT PADS', '1 UNDO 2 REDO 5 QUANT'); self.msg_t = now() + 3600; self.dirty = True   # a help line while Shift is held
         elif self.msg and self.msg[0] == 'SHIFT PADS': self.msg = None; self.dirty = True
 
+    def touch_enc(self, down):
+        """The encoder touched: what it would change and its value, without changing it; on the screen while it is touched."""
+        self.touch = down
+        if not cfg.TOUCH_PREVIEW: return
+        if down:
+            if self.mode == 'step' and self.held:
+                c = self.chan(); k = self.step_param; i0 = min(self.held)
+                self.message('STEP %d %s' % (i0 + 1, STEP_PARAMS[k][0]), self.step_text(k, self.step_value(c, i0, k)))
+            else: self.show_value()
+            self.msg_t = now() + 3600
+        elif self.msg: self.msg_t = now() + MSG_S
+
+    # ---- drum layouts (play mode) ---------------------------------------------------------------------------------------------------------------
+    def layout(self):
+        """'fpc' or 'slicer' when the selected channel's plug-in has a drum layout (and DRUM_LAYOUTS is on), else None."""
+        if not cfg.DRUM_LAYOUTS: return None
+        name = call(plugins, 'getPluginName', self.chan(), default='') if call(plugins, 'isValid', self.chan(), default=False) else ''
+        return 'fpc' if name == 'FPC' else 'slicer' if name in SLICERS else None
+
+    def cur_bank(self):
+        """The bank of the selected channel (a new channel starts at the first)."""
+        if self.bank_chan != self.chan(): self.bank_chan = self.chan(); self.bank = 0
+        return max(0, min(self.bank, self.banks() - 1))
+
+    def banks(self):
+        lay = self.layout()
+        if lay == 'fpc': return max(1, ((call(plugins, 'getPadInfo', self.chan(), -1, 0, default=16) or 16) + 15) // 16)
+        if lay == 'slicer': return (128 - SLICE_NOTE0 + 15) // 16
+        return 1
+
+    def drum_note(self, pad):
+        """The note pad 1..16 plays in the drum layout's bank, or None (no such FPC pad, beyond note 127)."""
+        k = self.cur_bank() * 16 + pad - 1
+        if self.layout() == 'fpc':
+            if k >= (call(plugins, 'getPadInfo', self.chan(), -1, 0, default=16) or 0): return None
+            nt = call(plugins, 'getPadInfo', self.chan(), -1, 1, k, default=-1)
+        else: nt = SLICE_NOTE0 + k
+        return nt if isinstance(nt, int) and 0 <= nt <= 127 else None
+
+    def bank_text(self):
+        b = self.cur_bank()
+        if self.layout() == 'fpc': return 'FPC BANK ' + 'AB'[b] if b < 2 else 'FPC PADS %d-%d' % (16 * b + 1, 16 * b + 16)
+        return 'SLICES %d-%d' % (16 * b + 1, 16 * b + 16)
+
+    # ---- FL's groups: Channel Rack group (the channel functions count within it), pattern groups (API 28) ----------------------------------------
+    def pattern_group(self): return call(patterns, 'getActivePatternGroup', default=-1) if has(patterns, 'getActivePatternGroup') else -1
+
+    def pattern_list(self):
+        """The patterns the Pattern mode's pads show: those of FL's selected pattern group, else all."""
+        g = self.pattern_group()
+        if isinstance(g, int) and g >= 0:
+            pl = call(patterns, 'getPatternsInGroup', g, default=None)
+            if pl is not None: return [p for p in pl if isinstance(p, int)]
+        return list(range(1, (call(patterns, 'patternCount', default=0) or 0) + 1))
+
+    def on_refresh(self, flags):
+        """OnRefresh: redraw; a change of Channel Rack group also ends held steps and says how many channels the group has."""
+        self.dirty = True
+        if flags & getattr(midi, 'HW_Dirty_ChannelRackGroup', 32768) and self.active:
+            self.held = {}; self.bank_chan = None
+            n = call(channels, 'channelCount', default=0) or 0
+            self.message('CHANNEL RACK', '%d CHANNEL%s' % (n, '' if n == 1 else 'S') if n else 'GROUP IS EMPTY')
+        if flags & getattr(midi, 'HW_Dirty_Names', 16384): self.params = None
+
+    # ---- Variation: plug-in parameters on the pads ----------------------------------------------------------------------------------------------
+    def param_list(self):
+        """The selected channel's plug-in parameters for the pads: the names PLUGIN_PAGES lists for this plug-in (those it has), else every parameter
+        that has a name, in FL's order. Found once per channel and plug-in."""
+        c = self.chan()
+        if not call(plugins, 'isValid', c, default=False): return []
+        name = call(plugins, 'getPluginName', c, default='') or ''; n = call(plugins, 'getParamCount', c, default=0) or 0
+        key = (call(channels, 'getChannelIndex', c, default=c), name, n)
+        if self.params is None or self.params_key != key:
+            names = {}
+            for q in range(min(n, PARAM_SCAN)):
+                pn = call(plugins, 'getParamName', q, c, default='') or ''
+                if pn.strip() and pn.strip().lower() not in names: names[pn.strip().lower()] = q
+            want = [names.get(w.strip().lower()) for w in cfg.PLUGIN_PAGES.get(name, ())]
+            want = [q for q in want if q is not None]
+            self.params = want or sorted(names.values()); self.params_key = key
+        return self.params
+
     def shift_pad(self, n):
         f = SHIFT_PAD.get(n); c = self.chan()
         if f == 'undo': call(general, 'undoUp'); self.message('UNDO', call(ui, 'getHintMsg', default='') or '')
@@ -314,12 +436,16 @@ class Controller:
         if cfg.FOCUS_WINDOWS: call(ui, 'showWindow', wid); call(ui, 'setFocused', wid)
 
     def mode_hint(self):
-        return {'step': 'HOLD STEP + ENCODER', 'select': 'PAD = CHANNEL', 'mute': 'PAD = MUTE', 'solo': 'PAD = SOLO', 'pattern': 'PAD = PATTERN',
-                'group': 'PAD = MIXER INSERT', 'play': self.chan_name()}.get(self.mode, '')
+        h = {'step': 'HOLD STEP + ENCODER', 'select': 'PAD = CHANNEL', 'mute': 'PAD = MUTE', 'solo': 'PAD = SOLO', 'pattern': 'PAD = PATTERN',
+             'group': 'PAD = MIXER INSERT', 'variation': 'PAD = PARAMETER', 'play': self.chan_name()}.get(self.mode, '')
+        if self.mode == 'pattern' and self.pattern_group() >= 0: return 'GROUP ' + str(call(patterns, 'getPatternGroupName', self.pattern_group(), default=''))
+        if self.mode == 'variation' and not self.param_list(): return 'NO PLUG-IN PARAMETERS'
+        return h
 
     def pages(self):
         if self.mode == 'step': return max(1, (self.steps() + 15) // 16)
-        if self.mode == 'pattern': return max(1, min(64, (call(patterns, 'patternCount', default=1) + 16) // 16))
+        if self.mode == 'pattern': return max(1, min(64, (len(self.pattern_list()) + (1 if self.pattern_group() < 0 else 0) + 15) // 16))
+        if self.mode == 'variation': return max(1, (len(self.param_list()) + 15) // 16)
         if self.mode == 'group': return 8
         return max(1, (call(channels, 'channelCount', default=1) + 15) // 16)
 
@@ -371,13 +497,12 @@ class Controller:
         self.show_value()
 
     def next_param(self, p, d):
-        """The next parameter with a name (VST plug-ins list thousands, most of them empty), d = 0: p itself if it has one."""
-        c = self.chan(); n = call(plugins, 'getParamCount', c, default=0) or 0
-        if not n: return 0
-        for k in range(n if d else n + 1):
-            q = (p + (k + 1) * d if d else p + k) % n
-            if call(plugins, 'getParamName', q, c, default=''): return q
-        return p
+        """The next parameter of param_list() (those with a name: VST plug-ins list thousands, most of them empty), d = 0: p itself if it is
+        one of them, else the first."""
+        pl = self.param_list()
+        if not pl: return 0
+        if p not in pl: return pl[0] if d >= 0 else pl[-1]
+        return pl[(pl.index(p) + d) % len(pl)]
 
     # ---- what the screen and the LEDs show ------------------------------------------------------------------------------------------------------
     def chan(self): return call(channels, 'selectedChannel', default=0) or 0
@@ -421,6 +546,7 @@ class Controller:
         if call(transport, 'isRecording', default=False): play = 'REC'
         title = MODE_TITLE[self.mode]
         if self.mode in GRID: title += ' %d/%d' % (self.page[self.mode] + 1, self.pages())
+        elif self.layout(): title += ' ' + self.bank_text()
         if self.target: title = (title + ' ' * 21)[:13] + self.target.upper()[:8]
         l1, l2 = self.msg if self.msg else (self.chan_name(), 'PAT %d %s' % (pn, self.pattern_name()))
         return [title, l1, l2, (self.tempo_text() + ' ' * 21)[:16] + play.rjust(5)]
@@ -429,12 +555,16 @@ class Controller:
         """The 16 pad LEDs of the current mode (pad 1..16 -> code)."""
         m = self.mode; base = self.page.get(m, 0) * 16; cols = {}
         n_ch = call(channels, 'channelCount', default=0) or 0
-        sel = self.chan()
+        sel = self.chan(); pats = self.pattern_list() if m == 'pattern' else None
         for p in range(1, 17):
             i = base + p - 1; v = 0
             if m == 'play':
-                c = self.chan()
-                if call(plugins, 'getPluginName', c, default='') == 'FPC':
+                c = self.chan(); lay = self.layout(); k = self.cur_bank() * 16 + p - 1
+                if lay == 'fpc':
+                    if self.drum_note(p) is not None: v = out.code(out.nearest(call(plugins, 'getPadInfo', c, -1, 2, k, default=0) or 0), 2)
+                elif lay == 'slicer':
+                    if self.drum_note(p) is not None: v = out.code(out.nearest(call(channels, 'getChannelColor', c, default=0) or 0), 3 if p in self.sounding else 1)
+                elif call(plugins, 'getPluginName', c, default='') == 'FPC':                       # (DRUM_LAYOUTS off: FPC's colours on the plain notes)
                     v = out.code(out.nearest(call(plugins, 'getPadInfo', c, -1, 2, p - 1, default=0) or 0), 2)
                 else: v = out.code(out.nearest(call(channels, 'getChannelColor', c, default=0) or 0), 1)
             elif m in ('select', 'mute', 'solo'):
@@ -444,9 +574,12 @@ class Controller:
                     elif m == 'mute': v = out.code(col, 0 if call(channels, 'isChannelMuted', i, default=False) else 2)
                     else: v = out.code(col, 3 if call(channels, 'isChannelSolo', i, default=False) else 0)
             elif m == 'pattern':
-                cnt = call(patterns, 'patternCount', default=0) or 0; cur = call(patterns, 'patternNumber', default=1)
-                if i + 1 <= cnt: v = out.code(out.nearest(call(patterns, 'getPatternColor', i + 1, default=0) or 0), 3 if i + 1 == cur else 1)
-                elif i + 1 == cnt + 1: v = out.code(out.WHITE, 0)
+                pl = pats; cur = call(patterns, 'patternNumber', default=1)
+                if i < len(pl): v = out.code(out.nearest(call(patterns, 'getPatternColor', pl[i], default=0) or 0), 3 if pl[i] == cur else 1)
+                elif i == len(pl) and self.pattern_group() < 0: v = out.code(out.WHITE, 0)
+            elif m == 'variation':
+                pl = self.param_list()
+                if i < len(pl): v = out.code(PARAM_COLOURS[i % len(PARAM_COLOURS)], 3 if pl[i] == self.param and self.target == 'plugin' else 1)
             elif m == 'group':
                 v = out.code(out.nearest(call(mixer, 'getTrackColor', i + 1, default=0) or 0), 3 if i + 1 == self.track() else 1)
             elif m == 'step':
@@ -478,7 +611,8 @@ class Controller:
     def can_move(self):
         if self.mode in GRID: return self.page[self.mode] > 0, self.page[self.mode] < self.pages() - 1
         if self.target in ('plugin', 'browser'): return True, True
-        c = self.chan(); return c > 0, c < (call(channels, 'channelCount', default=1) or 1) - 1
+        c = self.chan(); n = call(channels, 'channelCount', default=1) or 1; b = self.cur_bank() if self.layout() else 0
+        return c > 0 or b > 0, c < n - 1 or b < self.banks() - 1
 
     def strip_leds(self):
         """The 25 strip LEDs: the encoder target's value as a bar (pan from the centre), else the song position while FL plays."""
@@ -512,12 +646,14 @@ class Controller:
         if not self.active: return
         self.dirty = False; self.refresh_t = now()
         if full: self.leds = {}
+        if self.mode in GRID: self.page[self.mode] = max(0, min(self.page[self.mode], self.pages() - 1))   # (a group, a pattern or a plug-in changed under it)
+        self.send_host()
         want = {t.PAD_LED[p]: v for p, v in self.pad_leds().items()}
         want.update(self.button_leds()); want.update(self.strip_leds())
         for led, v in sorted(want.items()):
             if self.leds.get(led) != v: self.led(led, v)
         self.lines = self.screen()
-        self.draw()
+        self.draw(); self.send_steps()
 
     def led(self, led, v):
         st, d1, d2 = out.led_msg(led, v)
@@ -534,11 +670,28 @@ class Controller:
             self.px_queue = [m for h in changed for m in out.regions(lines, h)]
             self.sent_lines = lines; self.px_drawn = now()
 
+    def overview(self):
+        """Step mode: (steps, set steps, first visible, count, playhead) of the 128-step stretch holding the pads' page, for the firmware's overview
+        in place of screen line 3; None otherwise, and while a message needs both lines."""
+        if not (cfg.STEP_OVERVIEW and self.host_ok and self.mode == 'step' and not self.msg): return None
+        total = self.steps()
+        start = self.page['step'] * 16; base = start // 128 * 128; n = min(128, total - base); c = self.chan()
+        on = {k for k in range(n) if call(channels, 'getGridBit', c, base + k, default=False)}
+        ph = self.playhead() - base
+        return n, on, start - base, min(16, n - (start - base)), ph if 0 <= ph < n else None
+
+    def send_steps(self):
+        ov = self.overview()
+        m = out.steps_msg(*ov) if ov else (out.steps_msg(0) if self.sent_steps not in (None, out.steps_msg(0)) else None)
+        if m is not None and m != self.sent_steps: self.sysex(m); self.sent_steps = m
+
     def send_host(self):
-        """Host mode: our text on the screen, and the pads as a grid while a grid mode is on (else they play whatever the device's mode is)."""
-        f = t.HOST_SCREEN | (t.HOST_RAW if self.mode in GRID else 0)
-        if self.host_ok is False or f == self.host_flags: return
-        self.sysex(out.host(f)); self.host_flags = f              # (the answer confirms it)
+        """Host mode: our text on the screen, and the pads as a grid while a grid mode is on or a drum layout plays (else they play whatever the
+        device's mode is: Keyboard, Chords ...)."""
+        f = t.HOST_SCREEN | (t.HOST_RAW if self.mode in GRID or self.layout() else 0)
+        if self.host_ok is False: return
+        if f == self.host_want and (f == self.host_flags or now() - self.host_t < HOST_RETRY_S): return
+        self.sysex(out.host(f)); self.host_want = f; self.host_t = now()     # (the answer confirms it: host_flags)
 
 def clamp(v, lo, hi): return lo if v < lo else hi if v > hi else v
 def pan_text(v):

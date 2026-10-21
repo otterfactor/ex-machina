@@ -58,13 +58,13 @@ The controller has two modes, and **Shift + Project** switches between them, wha
 | **Tap** / Shift + Tap | tap tempo (the beat blinks on Tap) / metronome |
 | **Follow** | switches between pattern and song mode (lit in song mode) |
 | Shift + **Left / Right** | undo / redo |
-| **Left / Right** | the page in a pad mode below. In Plug-in: the parameter. In Browser: fold / unfold. Otherwise: the previous / next channel |
+| **Left / Right** | the page in a pad mode below. In Plug-in: the parameter. In Browser: fold / unfold. On an FPC or Slicex channel: its banks first (FPC bank B, slices 17-32 ...), then the next channel. Otherwise: the previous / next channel |
 | **Select** | pads = channels 1-16 (Left / Right for 17-32 ...). Press a pad to select its channel |
 | **Mute / Solo** | pads = channels: mute / solo them. In the Mixer (Group): mute / solo the selected insert |
 | Shift + **Solo** | every mute and solo off (the channels; in the Mixer the inserts) |
-| **Pattern** | pads = patterns: jump to one. The dim white pad makes a new pattern |
+| **Pattern** | pads = patterns: jump to one. If a pattern group is selected in FL, only its patterns. The dim white pad makes a new pattern (when all patterns show) |
 | **Group** | pads = mixer inserts: select one. Volume / Sampling then turn its volume / pan |
-| **Step** | pads = the 16 steps of the selected channel: set steps bright, the others dim in the channel's colour, every 4th dim white, the playhead white. **A hit sets a step with the hit's velocity** (hit harder for an accent). **Hold a step (or several) and turn the encoder** to edit it; **Events** chooses what: velocity, pitch, fine pitch, pan, release, Mod X, Mod Y, shift; FL's graph editor shows it. A set step hit again goes off when you let go, unless you edited it. Left / Right show steps 17-32 ... in longer patterns. Erase clears the channel, Shift + Erase every channel. Shift + Step: the encoder sets the pattern length |
+| **Step** | pads = the 16 steps of the selected channel: set steps bright, the others dim in the channel's colour, every 4th dim white, the playhead white. **A hit sets a step with the hit's velocity** (hit harder for an accent). **Hold a step (or several) and turn the encoder** to edit it; **Events** chooses what: velocity, pitch, fine pitch, pan, release, Mod X, Mod Y, shift; FL's graph editor shows it. A set step hit again goes off when you let go, unless you edited it. Left / Right show steps 17-32 ... in longer patterns. The third screen line shows the whole pattern as a strip (set steps tall, the steps on the pads bracketed, the playhead while FL plays). Erase clears the channel, Shift + Erase every channel. Shift + Step: the encoder sets the pattern length |
 | **Duplicate** (or Shift + Pattern) | clones the pattern |
 | **Volume / Sampling** | the encoder turns the selected channel's volume / pan. Hold the encoder down for fine steps; Shift + push resets it |
 | **Tempo / Swing** | the encoder turns the tempo / the swing |
@@ -72,15 +72,23 @@ The controller has two modes, and **Shift + Project** switches between them, wha
 | Shift + **Plug-in** | the encoder steps through the plug-in's presets |
 | **Browser** | opens FL's browser: the encoder moves, push opens or loads. Shift + Browser closes it |
 | **Favorites** | opens the selected channel's plug-in window |
+| **Variation** | pads = 16 parameters of the selected channel's plug-in (Left / Right for more), each in its own colour. Press a pad to choose that parameter: the encoder turns it and the screen shows its name and value |
+| **touching the encoder** | shows what the encoder would change and its value, without changing it, for as long as you touch it |
 | the encoder with nothing selected | moves the selection in the focused window; push = enter |
 
-Press a mode button again to go back to **playing**. The pads then play the selected channel; on an FPC they light in FPC's pad colours.
+Press a mode button again to go back to **playing**. The pads then play the selected channel. Two plug-ins get their own layout, as on Novation's FLkey:
+- **FPC**: pad 1 (bottom left) plays FPC's pad 1, and so on, in FPC's pad colours; Right shows bank B (FPC's pads 17-32).
+- **Slicex and Fruity Slicer**: pad 1 plays slice 1, pad 16 slice 16; Right shows slices 17-32, and so on.
+
+On those channels the controller's own Keyboard and Chords modes are off (the pads are the plug-in's pads); select another channel and they are back.
+
+The pads, Select, Mute, Solo and Step follow the **Channel Rack group** FL shows (the drop-down at the top of the Channel Rack). When you change it, the screen says how many channels the group has.
 
 **Shift + pads** do what is printed under the pads, in every mode: **1 Undo, 2 Redo, 3 Step undo, 4 Step redo** (FL has one undo history, so 3 and 4 do the same as 1 and 2), **5 Quantize** (FL's quick quantize of the selected channel: note starts and ends), **6 Quantize 50%**: FL's scripting offers no 50 % quantize (moving notes halfway to the grid), so pad 6 quantizes the note **starts only** and leaves the ends; the screen says `QUANTIZE STARTS`, **9 Clear** (the channel's steps), **11 Copy, 12 Paste** (in the focused window). While you hold Shift the screen shows a reminder.
 
 **Feedback.** The touch strip shows the encoder's value as a bar (volume green, pan from the centre in cyan, tempo orange, plug-in parameter blue) and, while FL plays, the song position. Left / Right are dark where they cannot go. Every message also appears in FL's hint bar. A mode button brings the matching window to the front (the Channel Rack, or the Mixer for Group; Plug-in opens the plug-in's window).
 
-**Settings.** `exm_settings.py` in the script's folder holds a few switches: step velocity from the hit, bringing windows to the front, the graph editor, loop recording on at start (off by default), the Score Log length, how long messages stay, the strip bar, the hint bar. Edit it and click *Update MIDI scripts*.
+**Settings.** `exm_settings.py` in the script's folder holds a few switches: step velocity from the hit, bringing windows to the front, the graph editor, loop recording on at start (off by default), the Score Log length, how long messages stay, the strip bar, the hint bar, the FPC / Slicex layouts, the touch preview, and which parameters of a plug-in Variation puts on the pads (`PLUGIN_PAGES`, by the names FL shows). Edit it and click *Update MIDI scripts*.
 
 **If the script fails** (a new FL version, a case nobody tried), the controller does not go dark: the screen shows `SCRIPT ERROR`, the pads go back to playing, and FL gets the controller as a plain MIDI controller. *View > Script output* shows what happened; reload the script with *Update MIDI scripts*.
 
@@ -92,11 +100,12 @@ The playing buttons work exactly as in *Maschine-like modes* (chapter 3), and th
 - Shift + Volume / Swing for the velocity curve;
 - Shift + Mute for panic.
 
-**Project** shows the Playlist and the Channel Rack in turn; **Shift + Project** leaves FL Studio mode. **Scene and Variation** are free (Events too, outside Step mode): FL's *Link to controller* can learn them.
+**Project** shows the Playlist and the Channel Rack in turn; **Shift + Project** leaves FL Studio mode. **Scene** is free (Events too, outside Step mode): FL's *Link to controller* can learn them.
 
 ## If something is not right
 - **The screen says `FL STUDIO / WAITING FOR FL`.** FL Studio is not running, the script is not selected for the controller, or the output port number is not the input's.
 - **FL does not react to the controller at all.** The controller is in Standalone mode: press Shift + Project.
+- **Touching the encoder shows nothing.** The touch needs the firmware of 2026-10-21 or later (its FL Studio mode sends the touch).
 - **The grid modes play notes instead of setting steps.** Either the firmware is older than generation 11 and the controller is not in Pad Mode, or the script did not get the controller's answer: check the output port.
 - **Swing or the pattern length says `NEEDS FL STUDIO 2026`.** Your FL Studio version does not have those functions.
 - **Uninstall.** Delete the `Ex-Machina` folder in FL's Hardware folder. The controller keeps working as a plain MIDI controller.
