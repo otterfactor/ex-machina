@@ -6,8 +6,8 @@ In FL Studio mode every button the script uses sends its CC as a gate, a few sen
 modes (Keyboard, Chords, Fixed Vel, Note Repeat, the strip) stay on the device. The script answers with the LEDs (one Note On per LED that
 changed) and the screen: four lines of text, as TEXT commands when the firmware has host mode (SysEx 20 answered), else as pixel regions.
 
-Everything FL Studio offers is reached through call(), which turns a function this FL version lacks or refuses into a default: several
-functions used here are new in FL Studio 2026 (swing, pattern length) and their exact form is not documented yet."""
+Everything FL Studio offers is reached through call(), which turns a function this FL version lacks or refuses into a default: the pattern
+length on the encoder needs a function new in FL Studio 2026 (setPatternLength)."""
 import time
 import channels, patterns, mixer, transport, plugins, ui, general, device, midi
 import exm_tables as t
@@ -55,6 +55,10 @@ SLICE_NOTE0 = 60
 PARAM_COLOURS = (1, 2, 5, 7, 6, 9, 13, 16)          # Variation: the pads' colours, in turn (red, orange, yellow, green, lime, cyan, violet, fuchsia)
 PARAM_SCAN = 4096                                   # Variation: how many of a plug-in's parameters are searched for names (VSTs report thousands)
 STRIP_COLOUR = {'volume': 7, 'pan': 9, 'tempo': 2, 'swing': 13, 'plugin': 11, 'preset': 11, 'length': 5}   # the strip bar's hue per encoder target
+# The main swing (the Channel Rack's) is a REC event: turned like Image-Line's Fire script turns its endless knobs (mixer.automateEvent, relative,
+# REC_MIDIController) and read back as 0..1 and as FL's own text (device.getLinkedValue / getLinkedValueString). Values from FL's API reference.
+SWING_EVENT = getattr(midi, 'REC_MainShuffle', 0x40000001)
+REC_MIDI = getattr(midi, 'REC_MIDIController', 1005)
 PROBE_S = 1.0                                       # how long the script waits for the answer to HOST before drawing pixels
 HOST_RETRY_S = 0.5                                  # HOST not confirmed by then: sent again (the device drops a request that comes while it is busy)
 REGION_S = 0.012                                    # pixel regions at least 10 ms apart (the firmware drops one that comes too soon)
@@ -70,6 +74,7 @@ class Controller:
         self.host_ok = None; self.probe_t = 0.0                     # None: not known yet, True: the firmware has host mode, False: pixels
         self.leds = {}; self.lines = [''] * 4; self.sent_lines = [None] * 4; self.sent_steps = None    # sent_steps: the last STEPS (overview) message
         self.msg = None; self.msg_t = 0.0                            # temporary lines 2-3 (a value), until msg_t
+        self.hint_sent = None                                       # what the script last put in FL's hint bar (never read back as FL's own hint)
         self.beat = 0; self.dirty = True; self.refresh_t = 0.0
         self.px_queue = []; self.px_t = 0.0; self.px_drawn = 0.0
         self.host_flags = None; self.host_want = None; self.host_t = 0.0   # the flags the device confirmed, those last sent and when
@@ -215,8 +220,8 @@ class Controller:
             self.message('METRONOME', 'ON' if call(ui, 'isMetronomeEnabled', default=False) else 'OFF')
         elif name == 'Follow':
             call(transport, 'setLoopMode'); self.message('MODE', 'SONG' if call(transport, 'getLoopMode', default=0) else 'PATTERN')
-        elif name == 'Shift+Left': call(general, 'undoUp'); self.message('UNDO', call(ui, 'getHintMsg', default='') or '')
-        elif name == 'Shift+Right': call(general, 'undoDown'); self.message('REDO', call(ui, 'getHintMsg', default='') or '')
+        elif name == 'Shift+Left': call(general, 'undoUp'); self.message('UNDO', self.fl_hint())
+        elif name == 'Shift+Right': call(general, 'undoDown'); self.message('REDO', self.fl_hint())
         elif name in ('Left', 'Right'): self.arrow(-1 if name == 'Left' else 1)
         elif name in MODE_BUTTON:
             m = MODE_BUTTON[name]; self.mode = 'play' if self.mode == m else m; self.held = {}; self.send_host()
@@ -331,14 +336,13 @@ class Controller:
 
     def touch_enc(self, down):
         """The encoder touched: what it would change and its value, without changing it; on the screen while it is touched."""
-        self.touch = down
+        self.touch = down and cfg.TOUCH_PREVIEW                       # (while touched, message() keeps what it shows)
         if not cfg.TOUCH_PREVIEW: return
         if down:
             if self.mode == 'step' and self.held:
                 c = self.chan(); k = self.step_param; i0 = min(self.held)
                 self.message('STEP %d %s' % (i0 + 1, STEP_PARAMS[k][0]), self.step_text(k, self.step_value(c, i0, k)))
             else: self.show_value()
-            self.msg_t = now() + 3600
         elif self.msg: self.msg_t = now() + MSG_S
 
     # ---- drum layouts (play mode) ---------------------------------------------------------------------------------------------------------------
@@ -413,8 +417,8 @@ class Controller:
 
     def shift_pad(self, n):
         f = SHIFT_PAD.get(n); c = self.chan()
-        if f == 'undo': call(general, 'undoUp'); self.message('UNDO', call(ui, 'getHintMsg', default='') or '')
-        elif f == 'redo': call(general, 'undoDown'); self.message('REDO', call(ui, 'getHintMsg', default='') or '')
+        if f == 'undo': call(general, 'undoUp'); self.message('UNDO', self.fl_hint())
+        elif f == 'redo': call(general, 'undoDown'); self.message('REDO', self.fl_hint())
         elif f in ('quantize', 'quantize_starts'):
             call(channels, 'quickQuantize', c, 1 if f == 'quantize_starts' else 0); self.message('QUANTIZE' if f == 'quantize' else 'QUANTIZE STARTS', self.chan_name())
         elif f == 'clear': self.clear_steps([c]); self.message('CLEAR', self.chan_name())
@@ -473,11 +477,8 @@ class Controller:
             else: call(channels, 'setChannelPan', c, clamp(call(channels, 'getChannelPan', c, default=0) + d * (0.005 if fine else 0.02), -1, 1))
         elif tg == 'tempo': call(transport, 'globalTransport', midi.FPT_TempoJog, d * (1 if fine else 10))
         elif tg == 'swing':
-            mod = swing_module()
-            if mod:
-                v = call(mod, 'get_swing', default=0)
-                if isinstance(v, float) and v <= 1.0: call(mod, 'set_swing', clamp(v + d * (0.002 if fine else 0.01), 0.0, 1.0))
-                else: call(mod, 'set_swing', int(clamp((v or 0) + d, 0, 128)))
+            if has(mixer, 'automateEvent'): call(mixer, 'automateEvent', SWING_EVENT, d, REC_MIDI, 0, 1, 1 / 1024.0 if fine else 1 / 128.0)
+            else: call(transport, 'globalTransport', getattr(midi, 'FPT_ShuffleJog', 122), d)
         elif tg == 'plugin':
             if call(plugins, 'isValid', c, default=False):
                 p = self.param; v = call(plugins, 'getParamValue', p, c, default=0.0)
@@ -523,24 +524,35 @@ class Controller:
         if tg == 'pan':
             v = call(mixer, 'getTrackPan', self.track(), default=0) if self.mode == 'group' else call(channels, 'getChannelPan', c, default=0)
             return 'PAN ' + (call(mixer, 'getTrackName', self.track(), default='') if self.mode == 'group' else self.chan_name()), pan_text(v)
-        if tg == 'tempo': return 'TEMPO', self.tempo_text()
+        if tg == 'tempo': return None                               # (the status line shows the tempo already)
         if tg == 'swing':
-            mod = swing_module()
-            return ('SWING', str(call(mod, 'get_swing', default=''))) if mod else ('SWING', 'NEEDS FL STUDIO 2026')
+            v = self.swing_value()
+            return 'SWING', call(device, 'getLinkedValueString', SWING_EVENT, default='') or ('%d%%' % round(100 * v) if v is not None else '')
         if tg in ('plugin', 'preset'):
             if not call(plugins, 'isValid', c, default=False): return 'PLUG-IN', 'NONE ON THIS CHANNEL'
             if tg == 'preset': return call(plugins, 'getPluginName', c, default=''), 'PRESET ' + str(call(plugins, 'getName', c, -1, 6, 0, default='') or '')
             return call(plugins, 'getParamName', self.param, c, default=''), call(plugins, 'getParamValueString', self.param, c, default='') or '%d%%' % round(100 * call(plugins, 'getParamValue', self.param, c, default=0))
-        if tg == 'browser': return 'BROWSER', call(ui, 'getHintMsg', default='') or ''
+        if tg == 'browser': return 'BROWSER', self.fl_hint()
         if tg == 'length': return 'LENGTH', '%s BEATS' % call(patterns, 'getPatternLength', call(patterns, 'patternNumber', default=1), default='?')
-        return 'JOG', call(ui, 'getHintMsg', default='') or ''
+        h = self.fl_hint()
+        return ('JOG', h) if h else None                            # (a plain jog: only what FL itself says about it, if anything)
+
+    def swing_value(self):
+        v = call(device, 'getLinkedValue', SWING_EVENT, default=None)
+        return clamp(v, 0.0, 1.0) if isinstance(v, (int, float)) and v >= 0 else None
+
+    def fl_hint(self):
+        """FL's hint bar, unless it is the script's own last message (else 'JOG: JOG: ...' feeds on itself)."""
+        h = call(ui, 'getHintMsg', default='') or ''
+        return '' if h == self.hint_sent else h
 
     def show_value(self):
-        a, b = self.value_lines(); self.message(a, b)
+        v = self.value_lines(); self.dirty = True
+        if v: self.message(v[0], v[1], hint=self.target not in (None, 'browser'))   # (FL's own hint stays FL's: jog, browser)
 
-    def message(self, a, b=''):
-        self.msg = (str(a), str(b)); self.msg_t = now() + MSG_S; self.dirty = True
-        if cfg.HINT_BAR: call(ui, 'setHintMsg', ('%s: %s' % (a, b)) if b else str(a))
+    def message(self, a, b='', hint=True):
+        self.msg = (str(a), str(b)); self.msg_t = now() + (3600 if self.touch else MSG_S); self.dirty = True   # (stays while the encoder is touched)
+        if cfg.HINT_BAR and hint: self.hint_sent = ('%s: %s' % (a, b)) if b else str(a); call(ui, 'setHintMsg', self.hint_sent)
 
     def screen(self):
         pn = call(patterns, 'patternNumber', default=1)
@@ -642,6 +654,7 @@ class Controller:
             v = call(mixer, 'getCurrentTempo', default=None)
             if isinstance(v, (int, float)): v = v / 1000.0 if v >= 1000 else v; return clamp((v - 10) / 512.0, 0, 1)
         if tg == 'plugin' and call(plugins, 'isValid', c, default=False): return call(plugins, 'getParamValue', self.param, c, default=0)
+        if tg == 'swing': return self.swing_value()
         return None
 
     def refresh(self, full=False):
@@ -699,7 +712,3 @@ def clamp(v, lo, hi): return lo if v < lo else hi if v > hi else v
 def pan_text(v):
     p = int(round(abs(v) * 100))
     return 'CENTRE' if p == 0 else ('%d%% LEFT' % p if v < 0 else '%d%% RIGHT' % p)
-def swing_module():
-    for mod in (transport, patterns, channels, mixer, general):
-        if has(mod, 'set_swing') and has(mod, 'get_swing'): return mod
-    return None

@@ -17,7 +17,7 @@ A MIDI controller script for FL Studio (desktop, macOS and Windows) that turns t
   - FL state: `OnRefresh(flags)`★, `OnDoFullRefresh`★, `OnUpdateBeatIndicator`★, `OnProjectLoad`★, `OnDirtyChannel`, `OnDirtyMixerTrack`.
 - **Modules.** `transport`, `channels` (the Channel Rack and its step grid), `mixer`, `patterns`, `playlist`, `arrangement`, `plugins` (parameters, presets, FPC pads), `ui` (windows, browser, hints), `general` (undo), `device` (MIDI and SysEx out) and `midi` (constants).
 - **New in FL Studio 2026** (release notes):
-  - `get_swing` / `set_swing`;
+  - `get_swing` / `set_swing` (named in the release notes; the 2026.1 build the user runs, v26.1.7, has no functions of that name the script could find: the script does not use them);
   - `setPatternLength` / `incrementPatternLength`;
   - clear-pattern and FPC "pad is empty" functions (2026.1.3 / .4; their names are not published);
   - `clonePattern` to a destination index (2026.1.1);
@@ -26,7 +26,7 @@ A MIDI controller script for FL Studio (desktop, macOS and Windows) that turns t
   - a refresh flag for the Graph Editor;
   - `DisplayRect` limited to 2 s.
 
-  Image-Line's API reference (IL-Group's FL-Studio-API-Stubs) does not document these yet: **which module the swing functions are in, and their units, are unknown**.
+  Image-Line's API reference (IL-Group's FL-Studio-API-Stubs) does not document these yet. **The main swing** is reached instead through the API every FL version has: it is the REC event `REC_MainShuffle` (`REC_Global_First + 1`), turned with `mixer.automateEvent(id, delta, REC_MIDIController, 0, 1, 1/128)` exactly as Image-Line's Fire script turns its endless knobs, and read with `device.getLinkedValue` (0-1) / `getLinkedValueString` (FL's own text); without `automateEvent` the script falls back to `globalTransport(FPT_ShuffleJog)`.
 - **Existing scripts for the Mikro.** Third-party FL scripts for the *stock* Mikro in NI's MIDI mode exist (a GitHub project and paid ones). They are limited by NI's MIDI mode: Shift and the arrows send nothing, and the screen cannot be written. Nothing was taken from them.
 
 ## How the pieces fit
@@ -76,13 +76,13 @@ Shift + X means X pressed while Shift is held. "Device" means the firmware does 
 | Step: hit / hold | a hit sets the step with the hit's velocity (`setStepParameterByIndex(getChannelIndex(c), patternNumber(), step, 1, vel, True)`, as Image-Line's Fire script does; `STEP_VELOCITY`); an on step hit again goes off on release unless edited; held steps are white; **hold + encoder** edits the step parameter Events chooses (velocity, pitch, fine pitch, pan, release, Mod X, Mod Y, shift; defaults and maxima as the Fire's), `showGraphEditor` on it (`GRAPH_EDITOR`); off steps dim in the channel colour |
 | Duplicate, Shift + Pattern | clone the pattern |
 | Volume / Sampling | the encoder turns the selected channel's volume / pan (push held: fine; Shift + push: back to the default) |
-| Tempo | tempo jog (push held: 0.1 BPM) |
-| Swing | the global swing (FL 2026 `set_swing`; older FL: a message) |
+| Tempo | tempo jog (push held: 0.1 BPM); no value message, the status line (line 4) shows the tempo |
+| Swing | the main swing (`REC_MainShuffle` via `mixer.automateEvent`, 1/128 per step, push held 1/1024), FL's own value text on the screen, a bar on the strip |
 | Plug-in | the selected channel's plug-in: encoder = the value, push / arrows = the next / previous parameter that has a name; the screen shows its name and value text |
 | Shift + Plug-in | its presets: encoder = next / previous |
 | Browser / Shift + Browser | show and focus FL's browser: encoder = up / down, push = open / load, arrows = fold / unfold / hide it |
 | Favorites | open the selected channel's plug-in window |
-| Encoder with no target | `ui.jog` in the focused window, push = enter |
+| Encoder with no target | `ui.jog` in the focused window, push = enter; the screen shows FL's hint (`JOG / ...`) only when FL put one there itself (the script remembers what it wrote to the hint bar and never reads that back, and does not write jogs or browser moves to it) |
 | Pad Mode / Keyboard / Chords / Fixed Vel / Note Repeat / Auto / Lock / Pitch / Mod / Perform / Notes, Shift + Volume / Swing, Shift + Mute | device (as in *Maschine-like modes*): the notes go to FL. Turn on *Send master sync* for the Mikro's output in FL's MIDI settings so the arp follows FL's tempo |
 | Variation | pads = 16 parameters of the selected channel's plug-in (pages): the names `PLUGIN_PAGES` lists for that plug-in, in that order, else every parameter that has a name (the first 4,096 are searched, once per channel and plug-in); colours in turn red, orange, yellow, green, lime, cyan, violet, fuchsia, the chosen one bright; a pad chooses the parameter and makes the encoder's target Plug-in; the plug-in window comes forward (`FOCUS_WINDOWS`) |
 | Encoder touch (CC 9) | shows what the encoder would change and its value without changing it (held steps: their parameter), on the screen while touched (`TOUCH_PREVIEW`) |
@@ -102,7 +102,7 @@ Shift + X means X pressed while Shift is held. "Device" means the firmware does 
 - **Automation recording (AUTO).** The device uses Auto for the arp octaves.
 - **Note Repeat in FL's own sequencer.** (Per-step velocity and the step parameters are edited from the pads and the encoder since 2026-10-21.)
 - **Clear pattern and the FPC empty-pad check.** The 2026 functions are not named in any document, so the script does not use them yet: Erase clears the steps itself, and an empty FPC pad still shows FPC's colour.
-- **Unverified until it runs in FL.** The units of `get_swing` / `set_swing` (the script handles both an int and a 0-1 float) and which module they are in (it looks in transport, patterns, channels, mixer and general). The step size of `FPT_TempoJog` (10 = 1 BPM is assumed). Whether `getPatternLength` counts beats (assumed: 4 steps per beat). The colour order of `getChannelColor` (FL's own `utils.ColorToRGB` order, `0xRRGGBB`, is used).
+- **Unverified until it runs in FL.** That `automateEvent` on `REC_MainShuffle` moves the main swing (the Fire uses the call for channel and mixer events). The step size of `FPT_TempoJog` (10 = 1 BPM is assumed). Whether `getPatternLength` counts beats (assumed: 4 steps per beat). The colour order of `getChannelColor` (FL's own `utils.ColorToRGB` order, `0xRRGGBB`, is used).
 
 ## Testing
 - `integrations/fl_studio/test_fl_script.py`:

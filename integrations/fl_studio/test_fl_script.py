@@ -152,6 +152,11 @@ check('... Volume + encoder in Group mode: that insert\'s volume (+5 %)', round(
 # ---- the encoder ---------------------------------------------------------------------------------------------------------------------------------------
 c = fresh()
 check('no target: the encoder jogs (ui.jog), relative: 3 and -2', (enc(c, 3), enc(c, -2), calls('jog')), (True, True, [(3,), (-2,)]))
+check('... with FL\'s hint bar empty: no message, the hint bar left alone', (screen(c)[1], P.hint), ('KICK', ''))
+P.hint = 'Pattern 2'; enc(c, 1); enc(c, 1); enc(c, 1)
+check('... FL\'s own hint is shown (JOG / PATTERN 2), and never written back: it does not grow (JOG: JOG: ...)', (screen(c)[1:3], P.hint), (['JOG', 'PATTERN 2'], 'Pattern 2'))
+press(c, 'Volume'); press(c, 'Volume'); advance(2); c.idle(); enc(c, 1)
+check('... after a message of the script (VOL KICK: 78% in the hint bar) a jog does not show it back as FL\'s', (P.hint, screen(c)[1]), ('VOL Kick: 78%', 'KICK'))
 cc(c, 8, 127); cc(c, 8, 0); check('... the push = enter', calls('enter'), [()])
 press(c, 'Volume'); enc(c, 10)
 check('Volume: the selected channel\'s volume +10 %, on the screen', (round(P.ch[0]['vol'], 3), screen(c)[1:3]), (0.88, ['VOL KICK', '88%']))
@@ -159,10 +164,20 @@ cc(c, 8, 127); enc(c, 5); cc(c, 8, 0); check('... with the push held: fine steps
 press(c, 'Shift+Encoder Push'); check('Shift + push: back to the default', P.ch[0]['vol'], 0.78)
 press(c, 'Volume'); check('Volume again: no target', c.target, None)
 press(c, 'Sampling'); enc(c, -10); check('Sampling: pan, 20 % left', (round(P.ch[0]['pan'], 2), screen(c)[2]), (-0.2, '20% LEFT'))
-press(c, 'Tempo'); enc(c, 2); check('Tempo: tempo jog, shown', (calls('globalTransport')[-1], screen(c)[2]), ((midi.FPT_TempoJog, 20), '142.0 BPM'))
-press(c, 'Swing'); enc(c, 3); check('Swing: FL 2026 set_swing', (calls('set_swing'), screen(c)[2]), ([(3,)], '3'))
-del transport.set_swing; enc(c, 3); check('... without it (older FL): a message, no error', screen(c)[1:3], ['SWING', 'NEEDS FL STUDIO 2026'])
-transport.set_swing = lambda v: None
+advance(2); c.idle(); press(c, 'Tempo'); enc(c, 2)
+check('Tempo: tempo jog; the tempo shows only in the status line (no message repeating it)', (calls('globalTransport')[-1], screen(c)[1], screen(c)[3][:9]), ((midi.FPT_TempoJog, 20), 'KICK', '142.0 BPM'))
+cc(c, 9, 127); c.idle(); a = screen(c)[1]; cc(c, 9, 0); c.idle()
+check('... touching the encoder on Tempo shows no message either (and no old one stays)', a, 'KICK')
+import mixer as flmixer
+press(c, 'Swing'); enc(c, 3)
+check('Swing: FL\'s main swing (REC_MainShuffle) turned like the Fire\'s endless knobs (automateEvent, relative, 1/128 per step), FL\'s text shown',
+      (calls('automateEvent'), screen(c)[1:3]), ([(flsim.REC_MainShuffle, 3, 1005, 0, 1, 1 / 128.0)], ['SWING', '2%']))
+cc(c, 8, 127); enc(c, 4); cc(c, 8, 0); check('... with the push held: 1/1024 per step', calls('automateEvent')[-1][-1], 1 / 1024.0)
+lit = [c.leds[tb.STRIP_LED0 + k] for k in range(tb.STRIP_LEDS)]
+check('... the strip shows it as a bar (2.7 %: 1 LED)', sum(1 for v in lit if v), 1)
+auto = flmixer.automateEvent; del flmixer.automateEvent; enc(c, 3)
+check('... an FL without automateEvent: the swing jog (FPT_ShuffleJog), no error', (calls('globalTransport')[-1], screen(c)[1]), ((122, 3), 'SWING'))
+flmixer.automateEvent = auto
 c = fresh(); press(c, 'Right'); press(c, 'Right'); press(c, 'Right')
 check('Right with no grid mode: the next channel (Bass)', (P.sel, screen(c)[1]), (3, 'CHANNEL'))
 press(c, 'Plug-in'); check('Plug-in: the first parameter of its plug-in, name and value', screen(c)[1:3], ['OSC 1 COARSE', '0 ST'])

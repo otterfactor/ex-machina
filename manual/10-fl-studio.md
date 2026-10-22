@@ -10,7 +10,7 @@ The screen and the LEDs follow what FL is doing. The pad modes, scales, chords, 
 > First run in FL Studio 2026 on macOS (2026-10-21): the script was found and assigned to the controller automatically, and it worked. Not every button and mode has been tried in FL yet. FL Studio Mobile has no scripting: use its preset (chapter 5) there.
 
 ## What you need
-- FL Studio 20.8 or later, Fruity edition or higher. FL Studio 2026 is needed for swing and the pattern length on the encoder.
+- FL Studio 20.8 or later, Fruity edition or higher. FL Studio 2026 is needed for the pattern length on the encoder.
 - The controller with Ex-Machina in **FL Studio mode**: press **Shift + Project** (see *The two modes* below).
 - Best: the **generation 12 firmware** (FL Studio mode and host mode). With it, FL writes text on the screen and the pads work as a grid in every pad mode. An older Ex-Machina works too, with the **FL Studio** preset loaded by hand (setup page, or `mmk3_config.py preset apply fl-studio --save`), but:
   - the screen is drawn as pixels and may flicker back to the Ex-Machina screen now and then;
@@ -67,7 +67,7 @@ The controller has two modes, and **Shift + Project** switches between them, wha
 | **Step** | pads = the 16 steps of the selected channel: set steps bright, the others dim in the channel's colour, every 4th dim white, the playhead white. **A hit sets a step with the hit's velocity** (hit harder for an accent). **Hold a step (or several) and turn the encoder** to edit it; **Events** chooses what: velocity, pitch, fine pitch, pan, release, Mod X, Mod Y, shift; FL's graph editor shows it. A set step hit again goes off when you let go, unless you edited it. Left / Right show steps 17-32 ... in longer patterns. The third screen line shows the whole pattern as a strip (set steps tall, the steps on the pads bracketed, the playhead while FL plays). Erase clears the channel, Shift + Erase every channel. Shift + Step: the encoder sets the pattern length |
 | **Duplicate** (or Shift + Pattern) | clones the pattern |
 | **Volume / Sampling** | the encoder turns the selected channel's volume / pan. Hold the encoder down for fine steps; Shift + push resets it |
-| **Tempo / Swing** | the encoder turns the tempo / the swing |
+| **Tempo / Swing** | the encoder turns the tempo (shown in the bottom line) / the swing (shown with its value, and as a bar on the strip) |
 | **Plug-in** | the encoder turns a parameter of the selected channel's plug-in; push or Left / Right for the next one. The screen shows the name and value |
 | Shift + **Plug-in** | the encoder steps through the plug-in's presets |
 | **Browser** | opens FL's browser: the encoder moves, push opens or loads. Shift + Browser closes it |
@@ -107,5 +107,5 @@ The playing buttons work exactly as in *Maschine-like modes* (chapter 3), and th
 - **FL does not react to the controller at all.** The controller is in Standalone mode: press Shift + Project.
 - **Touching the encoder shows nothing.** The touch needs the firmware of 2026-10-21 or later (its FL Studio mode sends the touch).
 - **The grid modes play notes instead of setting steps.** Either the firmware is older than generation 11 and the controller is not in Pad Mode, or the script did not get the controller's answer: check the output port.
-- **Swing or the pattern length says `NEEDS FL STUDIO 2026`.** Your FL Studio version does not have those functions.
+- **The pattern length says `NEEDS FL STUDIO 2026`.** Your FL Studio version does not have that function.
 - **Uninstall.** Delete the `Ex-Machina` folder in FL's Hardware folder. The controller keeps working as a plain MIDI controller.
