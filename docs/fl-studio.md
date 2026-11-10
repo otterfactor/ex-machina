@@ -117,5 +117,5 @@ Shift + X means X pressed while Shift is held. "Device" means the firmware does 
 - `integrations/fl_studio/test_fl_script.py`:
   - **Part 1** runs the real script against `flsim.py`. That is a small project (4 channels, an FPC, a 3x Osc with parameters, 2 patterns, pattern groups, mixer inserts) behind the signatures of FL's API reference, with every call logged.
   - **Part 2** (with `patched.bin data_init.bin`) connects the script to the emulated firmware both ways. The device's MIDI goes to the script, and the script's LEDs, HOST and TEXT go to the device. It then compares the LEDs and the screen pixels the device ends up with against what the script meant, with host mode and with the pixel fallback. In particular, Step mode on the device while the device's Keyboard mode is on still sets steps 1 and 16 from pads 1 and 16.
-- `tools/midi_patch/test_host.py` tests the firmware side.
+- `tests/test_host.py` tests the firmware side.
 - Both run in `run_tests.sh`.

@@ -8,8 +8,10 @@ touch-strip modes, four preset slots stored in the device, and messages on its s
 
 This manual is for **using** the firmware and the flashing tools. The design notes and the research behind them are in [`../docs/`](../docs/).
 
-> Ex-Machina is a hobby project with no affiliation with Native Instruments. Flashing replaces the controller's firmware. NI's
-> bootloader is never touched, so NI's original firmware can always be put back (chapter 7), but you do it at your own risk.
+> **Experimental software, used entirely at your own risk.** Ex-Machina is an unofficial hobby project with no affiliation with Native
+> Instruments. Flashing replaces the controller's firmware; it can misbehave, may void your warranty, and could leave the controller unusable.
+> NI's bootloader is never written, so NI's original firmware can normally be put back (chapter 7), but that cannot be guaranteed for every
+> unit. The firmware and the tools are provided as is, without any warranty: whoever installs them bears every risk and consequence alone.
 
 ## Chapters
 | | Chapter | What is in it |
@@ -31,4 +33,4 @@ This manual is for **using** the firmware and the flashing tools. The design not
 - **Four presets in the device**: store four mappings (for example one per app) and press **Project**, the top-left button, to cycle through them without a computer.
 - **An FL Studio mode**: **Shift + Project** switches the controller to a built-in mapping for the FL Studio script (transport, Channel Rack, step sequencer, mixer, plug-ins) and back.
 - **Configured from a browser**: the setup page (Chrome or Edge) edits every button, pad and setting, keeps your own presets, and installs or removes the firmware.
-- **Always reversible**: the bootloader is never touched; NI's original firmware goes back with one click or one command.
+- **Normally reversible**: the bootloader is never touched; NI's original firmware goes back with one click or one command (no guarantee: see above).

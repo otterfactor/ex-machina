@@ -16,7 +16,8 @@ It exists because NI's own updater can only flash the image it carries (and macO
 
 **It writes to the device's flash. A wrong image can leave the device unusable** (the bootloader itself is not touched, so a device that does not boot
 can still be flashed again, but there is no guarantee for your unit). The tools ask for an explicit `--yes-flash` / a confirmation, and `validate_image`
-checks the vector table and the size, but they cannot know whether an image is a good firmware.
+checks the vector table and the size, but they cannot know whether an image is a good firmware. The tools are provided as is, without any
+warranty (`LICENSE`): you use them at your own risk.
 
 ## Use
 ```

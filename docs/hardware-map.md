@@ -1,6 +1,6 @@
 # Hardware map of the Mikro MK3 (what our own drivers talk to)
 
-Facts about the board, established for `docs/clean-firmware-plan.md`: register values read from the running device with `tools/periph_dump.py` (2026-10-19, stock init + our patch), and bus protocols observed by running the stock routines in the emulator with a peripheral model (`tools/emu/periph.py`). No NI code is reproduced here; where our driver must behave like the stock one, the behaviour is described and `tools/midi_patch/test_hal_*.py` compare the two on the emulated hardware.
+Facts about the board, established for `docs/clean-firmware-plan.md`: register values read from the running device with `tools/periph_dump.py` (2026-10-19, stock init + our patch), and bus protocols observed by running the stock routines in the emulator with a peripheral model (`tools/emu/periph.py`). No NI code is reproduced here; where our driver must behave like the stock one, the behaviour is described and `tests/test_hal_*.py` compare the two on the emulated hardware.
 
 ## Chip set-up (read from the device)
 - **Clocks**: 8 MHz crystal (HSE) x 9 = 72 MHz SYSCLK; AHB /1, APB1 /2 (36 MHz), APB2 /1; ADC clock /6 = 12 MHz; USB clock /1.5 = 48 MHz.

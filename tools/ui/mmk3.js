@@ -1,6 +1,6 @@
 // The Maschine Mikro MK3 patch's run-time configuration, host side, for the browser and for node: the config block, its range check, the
 // SysEx protocol (docs/remap-protocol.md), the saved record, and a client on top of any transport that can send and receive SysEx.
-// The tables come from mmk3_data.js (generated from tools/midi_patch/mmk3_config.py); test_mmk3.mjs checks every function here against
+// The tables come from mmk3_data.js (generated from host/mmk3_config.py); test_mmk3.mjs checks every function here against
 // vectors made by the Python library and against the firmware running in the emulator.
 
 import * as D from './mmk3_data.js';

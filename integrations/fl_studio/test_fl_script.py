@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The FL Studio script without FL Studio: flsim.py stands in for FL's modules, and the script is checked against it (every button, mode and encoder
 target of docs/fl-studio.md gives the FL calls it should; LEDs and screen messages are well formed). With an image, the second part connects the
-script to the emulated firmware (tools/midi_patch/devsim.py): the device's own MIDI goes to the script, the script's LEDs, HOST and TEXT go to the
+script to the emulated firmware (tests/devsim.py): the device's own MIDI goes to the script, the script's LEDs, HOST and TEXT go to the
 device, and the LEDs and the screen the device ends up with are compared with what the script meant (host mode, and the pixel fallback).
 
     test_fl_script.py                              the script against flsim
@@ -454,7 +454,7 @@ check('the text is the device font\'s (capitals, ? for the rest), 21 columns', o
 
 # ---- with the emulated device --------------------------------------------------------------------------------------------------------------------------
 if len(sys.argv) > 2:
-    sys.path.insert(0, os.path.join(HERE, '..', '..', 'tools', 'midi_patch')); sys.path.insert(0, os.path.join(HERE, '..', '..', 'tools', 'emu'))
+    sys.path.insert(0, os.path.join(HERE, '..', '..', 'tests')); import paths      # (the emulator harness, the host library)
     import devsim, dispsim
     import mmk3_config as mc
     fw = open(sys.argv[1], 'rb').read(); data = open(sys.argv[2], 'rb').read()

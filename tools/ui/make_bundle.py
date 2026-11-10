@@ -10,7 +10,7 @@ again before it flashes anything. make() refuses a tail that still contains a ru
     make_bundle.py --check <stock.bin> <patched.bin>         fail if the committed bundle does not describe these two images"""
 import hashlib, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..', 'midi_patch'))
+for _d in ('firmware', 'host'): sys.path.insert(0, os.path.join(HERE, '..', '..', _d))
 import build_patch as bp
 STOCK_LEN = 0x9DC8                       # NI's firmware image, 40,392 bytes (build_patch.STOCK_LEN)
 STOCK_SHA256 = '76ebf72d33961639a0bd042ba32354dd8dc07569be69175546eb9fc06e5c5917'   # NI's firmware 1.20 for the Mikro MK3 (tools/restore_stock.sh checks the same)

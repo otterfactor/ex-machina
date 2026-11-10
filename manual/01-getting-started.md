@@ -20,10 +20,11 @@ Ex-Machina comes in two forms that behave the same for playing:
 | Start-up | NI's logo and LED animation (about 2 s) | A blank screen, then the Ex-Machina screen after 0.3 s |
 
 Both keep the USB identity of the original (`17cc:1700`, named *Maschine Mikro MK3*), so NI's own updater still recognises the device, and both
-leave NI's bootloader alone, so either can be replaced by the other or by NI's original at any time.
+leave NI's bootloader alone, so either can normally be replaced by the other or by NI's original.
 
 ## Installing
-Chapter 7 has the details. In short, with the setup page:
+Installing Ex-Machina is entirely at your own risk: it is experimental, unofficial firmware provided as is, without any warranty (see the
+[manual's introduction](README.md) and chapter 7). Chapter 7 has the details. In short, with the setup page:
 1. `python3 tools/ui/serve.py` and open `http://localhost:8765` in Chrome or Edge.
 2. **Firmware** tab: first **save a copy of NI's original firmware** and keep it safe.
 3. Choose your NI updater file, select the Maschine, tick the confirmation, **Flash now**. The page asks once more for the device when it

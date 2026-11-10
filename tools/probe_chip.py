@@ -8,7 +8,7 @@ non-zero byte is its high-water mark). Only a summary is printed; no memory cont
                                    older builds bus-fault on it and the watchdog resets the device)
                              (needs mido + python-rtmidi; the device on this computer, no other MIDI program using SysEx)"""
 import os, struct, sys
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'midi_patch'))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'host'))
 import mmk3_config as mc
 
 DEVIDS = {0x410: 'STM32F1 medium density (16-128 KB flash)', 0x412: 'STM32F1 low density (16-32 KB)', 0x414: 'STM32F1 high density (256-512 KB)',

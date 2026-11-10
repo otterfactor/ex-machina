@@ -563,7 +563,7 @@ async function prepareImage() {
       : `Patched image: ${fw.image.length} bytes, SHA-256 ${sha.slice(0, 16)}… (checked), flash 0x${F.APP_BASE.toString(16)}–0x${(F.APP_BASE + fw.image.length - 1).toString(16)}. The original firmware can be restored from this page.`;
     $('ack-text').textContent = fw.mode === 'stock'
       ? 'I know the device will stop being a MIDI device until the MIDI firmware is flashed again, and I will not unplug it while this runs.'
-      : 'I have a copy of NI\'s original firmware saved (step 1) so that I can restore it, and I will not unplug the device while this runs.';
+      : 'I understand that Ex-Machina is experimental, unofficial software provided as is, without any warranty, and that installing it is entirely at my own risk. I have a copy of NI\'s original firmware saved (step 1) so that I can restore it, and I will not unplug the device while this runs.';
     setStep('st-file', { done: true }); setStep('st-image', { done: true }); setStep('st-usb');
     $('btn-usb').disabled = !navigator.usb;
     if (!navigator.usb) $('usb-result').textContent = 'This browser has no WebUSB. Use Chrome or Edge.';

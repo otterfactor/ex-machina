@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Writes vectors.json: inputs and the outputs of the Python host library (tools/midi_patch/mmk3_config.py), which test_mmk3.mjs
+"""Writes vectors.json: inputs and the outputs of the Python host library (host/mmk3_config.py), which test_mmk3.mjs
 checks the JavaScript implementation (mmk3.js) against.
 
     make_vectors.py [--check]"""
 import json, os, random, struct, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..', 'midi_patch'))
+sys.path.insert(0, os.path.join(HERE, '..', '..', 'host'))
 import mmk3_config as mc
 
 def render():

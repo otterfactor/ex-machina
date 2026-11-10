@@ -1,10 +1,10 @@
 # 8. Command line
 
-`tools/midi_patch/mmk3_config.py` does from a terminal what the setup page does in the browser. It talks to the controller over MIDI SysEx.
+`host/mmk3_config.py` does from a terminal what the setup page does in the browser. It talks to the controller over MIDI SysEx.
 
 ```bash
 pip install mido python-rtmidi
-python3 tools/midi_patch/mmk3_config.py info
+python3 host/mmk3_config.py info
 ```
 
 ## Commands

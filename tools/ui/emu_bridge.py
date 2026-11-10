@@ -12,7 +12,7 @@ One JSON object per line on stdin, one JSON object per line on stdout:
     {"op": "violations"}                                 -> {"violations": [...]}                      (flash accesses outside the save page)"""
 import json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.join(HERE, '..', 'midi_patch'))
+sys.path.insert(0, os.path.join(HERE, '..', '..', 'tests')); import paths      # (the emulator harness)
 import devsim
 
 fw = open(sys.argv[1], 'rb').read(); data = open(sys.argv[2], 'rb').read()

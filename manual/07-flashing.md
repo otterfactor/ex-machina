@@ -1,5 +1,10 @@
 # 7. Flashing and recovery
 
+> **Experimental software, used entirely at your own risk.** Ex-Machina is an unofficial hobby project with no affiliation with Native
+> Instruments. Flashing replaces the controller's firmware; it can misbehave, may void your warranty, and could leave the controller unusable.
+> NI's bootloader is never written, so NI's original firmware can normally be put back (this chapter), but that cannot be guaranteed for every
+> unit. The firmware and the tools are provided as is, without any warranty: whoever installs them bears every risk and consequence alone.
+
 The controller has two parts in its flash: **NI's bootloader**, at the bottom, which is never written by anything in this project, and the
 **application** above it, which is what gets replaced. The bootloader is a standard USB DFU device, and the flashing tools speak that protocol
 directly, so NI's updater is not needed for any of this.
@@ -65,9 +70,9 @@ back as 17cc:1700, bcdDevice 0x0051
 ### Building the images yourself
 ```bash
 python3 tools/carve_fw.py <MM3Updater binary> stock.bin                     # NI's image out of the Mac updater (keep it private)
-python3 tools/midi_patch/build_patch.py stock.bin patched.bin               # the patched image
-python3 tools/midi_patch/build_patch.py stock.bin standalone.bin --native   # the standalone image (no NI code)
-tools/midi_patch/run_tests.sh stock.bin workdir                             # every test, in an emulator
+python3 firmware/build_patch.py stock.bin patched.bin               # the patched image
+python3 firmware/build_patch.py stock.bin standalone.bin --native   # the standalone image (no NI code)
+tests/run_tests.sh stock.bin workdir                             # every test, in an emulator
 ```
 Building needs clang with the ARM target and `pip install unicorn pyelftools usb-protocol` for the tests. `build_patch.py --help` lists the
 build options (USB identity, default transport, pad base, colours, velocity curve...); almost everything is also changeable later from the setup page.
@@ -82,7 +87,7 @@ build options (USB identity, default transport, pad base, colours, velocity curv
 Afterwards the controller is exactly the stock device again, and works with NI's software.
 
 ## Getting out of trouble
-The firmware has three ways back to the bootloader, which always accepts a new image:
+The firmware has three ways back to the bootloader, which has accepted a new image every time so far:
 
 | Situation | What to do |
 |---|---|

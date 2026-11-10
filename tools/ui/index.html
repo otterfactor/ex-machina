@@ -179,7 +179,7 @@
     <div class="card">
       <h2>Backup and sharing</h2>
       <div class="row"><button id="btn-pexport">Export my presets</button><label>Import presets <input type="file" id="file-pimport" accept="application/json,.json" multiple></label></div>
-      <p class="muted" style="margin:6px 0 0">Your presets are kept in this browser (for this address). A file made here can be imported on another computer; <code>tools/midi_patch/mmk3_config.py preset apply NAME FILE</code> sends one from the command line.</p>
+      <p class="muted" style="margin:6px 0 0">Your presets are kept in this browser (for this address). A file made here can be imported on another computer; <code>host/mmk3_config.py preset apply NAME FILE</code> sends one from the command line.</p>
     </div>
   </section>
 
@@ -308,6 +308,7 @@
         <label class="field"><input type="radio" name="fwmode" value="midi" checked><span style="min-width:0;color:var(--text)">Install the MIDI firmware</span></label>
         <label class="field"><input type="radio" name="fwmode" value="stock"><span style="min-width:0;color:var(--text)">Restore NI's original firmware</span></label>
       </div>
+      <p class="note"><strong>Experimental software, at your own risk.</strong> Ex-Machina is an unofficial hobby project, not made or supported by Native Instruments. Installing it replaces the controller's firmware; it is provided as is, without any warranty, and whoever installs it bears every risk, including a controller that no longer works. NI's bootloader is never written, so the original firmware can normally be put back from this page, but that cannot be guaranteed for every unit.</p>
       <p class="note" id="usb-note">Flashing needs Chrome or Edge (WebUSB). Close every other program that uses the Maschine (NI Controller Editor, other browser tabs with MIDI or USB access), then work through the steps. Restoring works from your own copy of NI's firmware, so it does not depend on NI's updater (which macOS is about to stop supporting): save the copy in step 1.</p>
       <ol class="steps" id="steps">
         <li id="st-file"><strong>NI's firmware file</strong>
@@ -319,7 +320,7 @@
           <p class="muted">The browser asks which USB device to use. Choose <em>Maschine Mikro MK3</em>.</p>
           <button id="btn-usb" disabled>Select the Maschine…</button> <span id="usb-result" class="muted"></span></li>
         <li id="st-flash" class="off"><strong>Flash</strong>
-          <label class="field"><input type="checkbox" id="ack"><span id="ack-text" style="min-width:0;color:var(--text)">I have a copy of NI's original firmware saved (step 1) so that I can restore it, and I will not unplug the device while this runs.</span></label>
+          <label class="field"><input type="checkbox" id="ack"><span id="ack-text" style="min-width:0;color:var(--text)">I understand that Ex-Machina is experimental, unofficial software provided as is, without any warranty, and that installing it is entirely at my own risk. I have a copy of NI's original firmware saved (step 1) so that I can restore it, and I will not unplug the device while this runs.</span></label>
           <div class="row" style="margin-top:8px"><button id="btn-flash" class="primary" disabled>Flash now</button><button id="btn-usb2" hidden>Select the bootloader…</button></div>
           <progress id="prog" value="0" max="100" hidden></progress><div id="flash-result" class="muted" style="margin-top:6px"></div></li>
       </ol>
