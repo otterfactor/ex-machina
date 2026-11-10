@@ -74,6 +74,7 @@ The controller has two modes, and **Shift + Project** switches between them, wha
 | **Favorites** | opens the selected channel's plug-in window |
 | **Variation** | pads = 16 parameters of the selected channel's plug-in (Left / Right for more), each in its own colour. Press a pad to choose that parameter: the encoder turns it and the screen shows its name and value |
 | **touching the encoder** | shows what the encoder would change and its value, without changing it, for as long as you touch it |
+| the encoder while FL shows a **popup menu** (a right-click menu) | turn to move through the choices, push to pick one, Shift + push to close the menu. FL's "what would you like to record?" question after Rec is the exception: while it is open FL does not listen to the controller, so answer it with the mouse |
 | the encoder with nothing selected | moves the selection in the focused window; push = enter |
 
 Press a mode button again to go back to **playing**. The pads then play the selected channel. Two plug-ins get their own layout, as on Novation's FLkey:
@@ -84,7 +85,14 @@ On those channels the controller's own Keyboard and Chords modes are off (the pa
 
 The pads, Select, Mute, Solo and Step follow the **Channel Rack group** FL shows (the drop-down at the top of the Channel Rack). When you change it, the screen says how many channels the group has.
 
-**Shift + pads** do what is printed under the pads, in every mode: **1 Undo, 2 Redo, 3 Step undo, 4 Step redo** (FL has one undo history, so 3 and 4 do the same as 1 and 2), **5 Quantize** (FL's quick quantize of the selected channel: note starts and ends), **6 Quantize 50%**: FL's scripting offers no 50 % quantize (moving notes halfway to the grid), so pad 6 quantizes the note **starts only** and leaves the ends; the screen says `QUANTIZE STARTS`, **9 Clear** (the channel's steps), **11 Copy, 12 Paste** (in the focused window). While you hold Shift the screen shows a reminder.
+**Shift + pads** do what is printed under the pads, in every mode: **1 Undo, 2 Redo, 3 Step undo, 4 Step redo** (FL has one undo history, so 3 and 4 do the same as 1 and 2), **9 Clear** (the channel's steps), **11 Copy, 12 Paste** (in the focused window), and the edit pads **5 Quantize, 6 Quantize 50%, 7 Nudge <, 8 Nudge >, 13 Semitone −, 14 Semitone +, 15 Octave −, 16 Octave +**. As in Maschine they work on what is selected, or on everything when nothing is:
+- They act on the **selected channel's notes that sit on steps** (in Step mode, only the steps you hold). Quantize puts each note on the nearest step line (50 %: halfway); nudge moves the notes half a step (as Maschine's nudge grid; `NUDGE_STEPS` in the settings), round the pattern; the transpose pads change the pitch. Notes keep their length.
+- Each edit is one step in FL's undo history (Shift + pad 1 takes back just that edit).
+- FL Studio 2026 does not let a controller script reach the piano roll's own notes, so a selection made in the piano roll is not used, and chords or notes between the steps are only partly reached.
+
+While you hold Shift the screen shows a reminder.
+
+**Swing** is FL's step-sequencer swing: it moves the Channel Rack's off-beat steps (every second 16th step), so put steps on every 16th to hear it; piano-roll notes are not swung by it.
 
 **Feedback.** The touch strip shows the encoder's value as a bar (volume green, pan from the centre in cyan, tempo orange, plug-in parameter blue) and, while FL plays, the song position. Left / Right are dark where they cannot go. Every message also appears in FL's hint bar. A mode button brings the matching window to the front (the Channel Rack, or the Mixer for Group; Plug-in opens the plug-in's window).
 

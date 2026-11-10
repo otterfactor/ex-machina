@@ -16,7 +16,7 @@ import exm_settings as cfg
 
 # Every setting with its default: a settings file from an older version of the script (kept, or still loaded by FL) lacks the newer ones.
 SETTINGS = dict(STEP_VELOCITY=True, FOCUS_WINDOWS=True, GRAPH_EDITOR=True, LOOP_RECORD_ON_CONNECT=False, SCORE_LOG_SECONDS=300, MESSAGE_SECONDS=1.5,
-                STRIP_BAR=True, HINT_BAR=True, DRUM_LAYOUTS=True, STEP_OVERVIEW=True, TOUCH_PREVIEW=True, PLUGIN_PAGES={})
+                STRIP_BAR=True, HINT_BAR=True, DRUM_LAYOUTS=True, STEP_OVERVIEW=True, TOUCH_PREVIEW=True, PLUGIN_PAGES={}, NUDGE_STEPS=0.5)
 for _k, _v in SETTINGS.items():
     if not hasattr(cfg, _k): setattr(cfg, _k, _v)
 
@@ -44,10 +44,22 @@ MSG_S = cfg.MESSAGE_SECONDS                         # how long a value stays on 
 # Numbers, defaults and maxima as FL's API reference and Image-Line's Akai Fire script use them.
 STEP_PARAMS = (('VELOCITY', 1, 100, 127, 1), ('PITCH', 0, 60, 127, 1), ('FINE PITCH', 3, 120, 240, 2), ('PAN', 4, 64, 127, 2),
                ('RELEASE', 2, 64, 127, 2), ('MOD X', 5, 128, 255, 2), ('MOD Y', 6, 128, 255, 2), ('SHIFT', 7, 0, 255, 1))
-# Shift + pad (in every mode), after the labels printed on the pads: 1 UNDO, 2 REDO, 3 STEP UNDO, 4 STEP REDO, 5 QUANTIZE, 6 QUANTIZE 50%, 9 CLEAR,
-# 11 COPY, 12 PASTE. FL has one undo history, so 3 / 4 do what 1 / 2 do. A 50 % quantize (notes halfway to the grid) is not in FL's MIDI-script API
-# (quickQuantize has only a start-only flag), so 6 quantizes the note starts only, and the screen says so.
-SHIFT_PAD = {1: 'undo', 2: 'redo', 3: 'undo', 4: 'redo', 5: 'quantize', 6: 'quantize_starts', 9: 'clear', 11: 'copy', 12: 'paste'}
+# Shift + pad (in every mode), after the labels printed on the pads: 1 UNDO, 2 REDO, 3 STEP UNDO, 4 STEP REDO, 5 QUANTIZE, 6 QUANTIZE 50%, 7 NUDGE <,
+# 8 NUDGE >, 9 CLEAR, 11 COPY, 12 PASTE, 13 SEMITONE -, 14 SEMITONE +, 15 OCTAVE -, 16 OCTAVE +. FL has one undo history, so 3 / 4 do what 1 / 2 do.
+# 5-8 and 13-16 work as in Maschine (NI's manual: the selected events, all of them if none is selected) on what is in front of the user:
+# - the piano roll (focused, or open outside Step mode): its selected notes, else all, through FL's piano-roll scripting module (flpianoroll), if FL
+#   lets a controller script use it (not documented; FL 2026.1 does not: tried once, the reason goes to Script output): quantize to FL's snap (50 %:
+#   halfway), nudge by one snap unit, transpose;
+# - else (also with the piano roll open, without flpianoroll) the selected channel's steps, which are its notes on steps (the held ones in Step mode):
+#   quantize = each note onto the nearest step line (50 %: halfway), nudge = by NUDGE_STEPS (Maschine's nudge grid: half a step) earlier / later,
+#   round the pattern, transpose = each step's pitch. Notes move only through their shift (FL moves them and they keep their length).
+SHIFT_PAD = {1: 'undo', 2: 'redo', 3: 'undo', 4: 'redo', 5: 'quantize', 6: 'quantize50', 7: 'nudge-', 8: 'nudge+', 9: 'clear', 11: 'copy', 12: 'paste',
+             13: 'semi-', 14: 'semi+', 15: 'oct-', 16: 'oct+'}
+EDIT_TITLE = {'quantize': 'QUANTIZE', 'quantize50': 'QUANTIZE 50%', 'nudge-': 'NUDGE <', 'nudge+': 'NUDGE >', 'semi-': 'SEMITONE -',
+              'semi+': 'SEMITONE +', 'oct-': 'OCTAVE -', 'oct+': 'OCTAVE +'}
+TRANSPOSE = {'semi-': -1, 'semi+': 1, 'oct-': -12, 'oct+': 12}
+SNAP_STEPS = {4: 1 / 6.0, 5: 0.25, 6: 1 / 3.0, 7: 0.5, 8: 1.0, 9: 2 / 3.0, 10: 1.0, 11: 4 / 3.0, 12: 2.0, 13: 4.0}   # FL's snap modes (midi.Snap_*) in steps
+FL_NOTE_MAX = 131                                   # (FL's notes go to B10)
 # Drum layouts in play mode: the pads follow the selected channel's plug-in. FPC: its own pad notes (plugins.getPadInfo), 16 pads per bank (A, B);
 # Slicex / Fruity Slicer: slice 1 = note 60 (C5) on pad 1, 16 slices per page, as Image-Line's Akai Fire script plays them.
 SLICERS = ('Slicex', 'Fruity Slicer')
@@ -59,6 +71,7 @@ STRIP_COLOUR = {'volume': 7, 'pan': 9, 'tempo': 2, 'swing': 13, 'plugin': 11, 'p
 # REC_MIDIController) and read back as 0..1 and as FL's own text (device.getLinkedValue / getLinkedValueString). Values from FL's API reference.
 SWING_EVENT = getattr(midi, 'REC_MainShuffle', 0x40000001)
 REC_MIDI = getattr(midi, 'REC_MIDIController', 1005)
+SHIFT_HELP = ('SHIFT 1 UNDO 5 QUANT', '7/8 NUDGE 13-16 PITCH')   # the help line while Shift is held
 PROBE_S = 1.0                                       # how long the script waits for the answer to HOST before drawing pixels
 HOST_RETRY_S = 0.5                                  # HOST not confirmed by then: sent again (the device drops a request that comes while it is busy)
 REGION_S = 0.012                                    # pixel regions at least 10 ms apart (the firmware drops one that comes too soon)
@@ -86,9 +99,11 @@ class Controller:
         self.shift_pads = set()                                     # pads pressed with Shift held: their release is ours too
         self.held = {}                                              # Step mode: held steps -> 'new' (set by this press) / 'on' (was on: off on release, unless edited) / 'edited'
         self.step_param = 0                                         # which STEP_PARAMS entry the encoder edits on held steps
+        self.held_undo = False                                      # the held steps' encoder edit has its undo point
         self.bank = 0; self.bank_chan = None                        # play mode: the drum layout's bank (FPC A / B, slice page) and the channel it is for
         self.sounding = {}                                          # play mode: pad -> the note it started (its Note Off goes to the same note)
         self.touch = False                                          # the encoder is touched (its value stays on the screen)
+        self.pr = None                                              # FL's piano-roll scripting module for a controller script: None not tried, False not available
         self.params = None; self.params_key = None                  # Variation: the plug-in parameters on the pads (indexes), and what they were found for
 
     # ---- FL Studio callbacks --------------------------------------------------------------------------------------------------------------------
@@ -197,7 +212,7 @@ class Controller:
         if not down: return name in self.used                      # (a release goes where its press went)
         if name == 'Play': transport.start()
         elif name == 'Stop': transport.stop()
-        elif name == 'Rec': transport.record()
+        elif name == 'Rec': transport.record()                    # (FL's question what to record, if it asks, blocks controller scripts: seen 2026-10-23)
         elif name == 'Restart':
             call(transport, 'setSongPos', 0)
             if not call(transport, 'isPlaying', default=False): transport.start()
@@ -249,7 +264,9 @@ class Controller:
             if self.mode == 'step': self.clear_steps([self.chan()]); self.message('ERASE', self.chan_name())
         elif name == 'Shift+Erase':
             self.clear_steps(range(call(channels, 'channelCount', default=0))); self.message('ERASE', 'ALL CHANNELS')
-        elif name == 'Shift+Encoder Push': self.reset_value()
+        elif name == 'Shift+Encoder Push':
+            if self.in_menu(): call(ui, 'closeActivePopupMenu'); self.message('MENU', 'CLOSED', hint=False)
+            else: self.reset_value()
         else: self.used.discard(name); return False
         self.used.add(name); self.dirty = True
         return True
@@ -269,6 +286,7 @@ class Controller:
     def push_btn(self, down):
         self.push = down
         if not down: return
+        if self.in_menu(): call(ui, 'enter'); self.message('MENU', 'SELECTED', hint=False); return    # (FL's popup menu: the highlighted item)
         if self.target == 'plugin': self.param = self.next_param(self.param, 1); self.show_value()
         elif self.target in (None, 'browser'): call(ui, 'enter')
 
@@ -279,9 +297,10 @@ class Controller:
             self.message(MODE_TITLE[self.mode], 'NO CHANNELS IN GROUP'); return
         if self.mode == 'step':                                    # a step: on at once (with the hit's velocity); an on step goes off when let go,
             c = self.chan()                                        # unless the encoder edited it while held
+            if not self.held: self.held_undo = False                # (a new hold: its first encoder edit gets an undo point)
             if call(channels, 'getGridBit', c, i, default=False): self.held[i] = 'on'
             else:
-                call(channels, 'setGridBit', c, i, 1); self.held[i] = 'new'
+                self.save_undo('Step on'); call(channels, 'setGridBit', c, i, 1); self.held[i] = 'new'
                 if cfg.STEP_VELOCITY: self.set_step(c, i, 1, vel)
                 self.message('STEP %d' % (i + 1), 'VELOCITY %d' % (vel if cfg.STEP_VELOCITY else 100))
         elif self.mode == 'pattern':
@@ -302,22 +321,39 @@ class Controller:
     def pad_up(self, n):
         if self.mode != 'step': return
         i = self.page[self.mode] * 16 + n - 1; h = self.held.pop(i, None)
-        if h == 'on': call(channels, 'setGridBit', self.chan(), i, 0); self.dirty = True
+        if h == 'on': self.save_undo('Step off'); call(channels, 'setGridBit', self.chan(), i, 0); self.dirty = True
+
+    def save_undo(self, name):
+        """An undo point before an edit (as Image-Line's Fire script does), so FL's undo takes back only that edit."""
+        call(general, 'saveUndo', 'Ex-Machina: ' + name, getattr(midi, 'UF_PR', 2), True)
 
     def set_step(self, c, i, param, value):
         call(channels, 'setStepParameterByIndex', call(channels, 'getChannelIndex', c, default=c), call(patterns, 'patternNumber', default=1), i, param, value, True)
 
+    def pps(self): return max(2, call(mixer, 'getRecPPS', default=24) or 24)     # ticks per step
+
     def step_value(self, c, i, k):
+        """Step parameter STEP_PARAMS[k] of step i; the shift as the offset within the step (0 .. ticks per step - 1)."""
         name, param, dflt, hi, inc = STEP_PARAMS[k]
         v = call(channels, 'getCurrentStepParam', c, i, param, default=-1)
+        if param == 7:                                             # FL keeps the shift as the note's position in the pattern (ticks), as the Fire
+            base = i * self.pps()                                  # script treats it: step start + offset
+            return clamp(v - base, 0, self.pps() - 1) if isinstance(v, int) and v >= base else 0
         return dflt if v is None or v < 0 else v
+
+    def put_step(self, c, i, k, v):
+        """Sets step parameter STEP_PARAMS[k] of step i; the shift given as the offset within the step."""
+        param = STEP_PARAMS[k][1]
+        if param == 7: v = i * self.pps() + clamp(v, 0, self.pps() - 1)
+        self.set_step(c, i, param, v)
 
     def edit_steps(self, d):
         """The encoder on held steps: the chosen step parameter of every held step, the graph editor on it."""
         c = self.chan(); k = self.step_param; name, param, dflt, hi, inc = STEP_PARAMS[k]
-        if param == 7: hi = max(1, (call(mixer, 'getRecPPS', default=hi) or hi) - 1)     # (a shift stays within its step)
+        if param == 7: hi = self.pps() - 1                         # (a shift stays within its step)
+        if not self.held_undo: self.save_undo('Step ' + name.lower()); self.held_undo = True
         for i in list(self.held):
-            v = clamp(self.step_value(c, i, k) + d * inc, 0, hi); self.set_step(c, i, param, v); self.held[i] = 'edited'
+            v = clamp(self.step_value(c, i, k) + d * inc, 0, hi); self.put_step(c, i, k, v); self.held[i] = 'edited'
         i0 = min(self.held)
         if cfg.GRAPH_EDITOR: call(channels, 'showGraphEditor', False, param, i0, call(channels, 'getChannelIndex', c, default=c), True)
         self.message('STEP %d %s' % (i0 + 1, name), self.step_text(k, self.step_value(c, i0, k)))
@@ -331,15 +367,16 @@ class Controller:
 
     def shift_btn(self, down):
         self.shift = down
-        if down: self.msg = ('SHIFT PADS', '1 UNDO 2 REDO 5 QUANT'); self.msg_t = now() + 3600; self.dirty = True   # a help line while Shift is held
-        elif self.msg and self.msg[0] == 'SHIFT PADS': self.msg = None; self.dirty = True
+        if down: self.msg = SHIFT_HELP; self.msg_t = now() + 3600; self.dirty = True   # a help line while Shift is held
+        elif self.msg == SHIFT_HELP: self.msg = None; self.dirty = True
 
     def touch_enc(self, down):
         """The encoder touched: what it would change and its value, without changing it; on the screen while it is touched."""
         self.touch = down and cfg.TOUCH_PREVIEW                       # (while touched, message() keeps what it shows)
         if not cfg.TOUCH_PREVIEW: return
         if down:
-            if self.mode == 'step' and self.held:
+            if self.in_menu(): self.message('MENU', 'TURN, PUSH = SELECT', hint=False)
+            elif self.mode == 'step' and self.held:
                 c = self.chan(); k = self.step_param; i0 = min(self.held)
                 self.message('STEP %d %s' % (i0 + 1, STEP_PARAMS[k][0]), self.step_text(k, self.step_value(c, i0, k)))
             else: self.show_value()
@@ -419,11 +456,77 @@ class Controller:
         f = SHIFT_PAD.get(n); c = self.chan()
         if f == 'undo': call(general, 'undoUp'); self.message('UNDO', self.fl_hint())
         elif f == 'redo': call(general, 'undoDown'); self.message('REDO', self.fl_hint())
-        elif f in ('quantize', 'quantize_starts'):
-            call(channels, 'quickQuantize', c, 1 if f == 'quantize_starts' else 0); self.message('QUANTIZE' if f == 'quantize' else 'QUANTIZE STARTS', self.chan_name())
+        elif f in EDIT_TITLE: self.edit(f)
         elif f == 'clear': self.clear_steps([c]); self.message('CLEAR', self.chan_name())
         elif f in ('copy', 'paste'): call(transport, 'globalTransport', midi.FPT_Copy if f == 'copy' else midi.FPT_Paste, 1); self.message(f.upper(), '')
         self.dirty = True
+
+    # ---- Shift + pads 5-8, 13-16: quantize, nudge, transpose (piano roll notes or the channel's steps) --------------------------------------------
+    def edit(self, f):
+        self.save_undo(EDIT_TITLE[f].capitalize())
+        if call(ui, 'getFocused', midi.widPianoRoll, default=False) or (self.mode != 'step' and call(ui, 'getVisible', midi.widPianoRoll, default=False)):
+            pr = self.piano_roll()
+            if pr: n = self.edit_notes(pr.score, f); self.message(EDIT_TITLE[f], '%d NOTE%s' % (n, '' if n == 1 else 'S')); return
+        n = self.edit_steps_all(f)                                  # (else, also with the piano roll open: the channel's steps, its notes on steps)
+        self.message(EDIT_TITLE[f], '%s %d STEP%s' % (self.chan_name()[:10], n, '' if n == 1 else 'S'))
+
+    def piano_roll(self):
+        """FL's piano-roll scripting module if FL lets a controller script use it (tried once; the reason goes to View > Script output), else None."""
+        if self.pr is None:
+            try:
+                import flpianoroll
+                self.pr = flpianoroll if hasattr(flpianoroll, 'score') else False
+            except Exception as e:
+                print('Ex-Machina: no piano roll access for a controller script (%s: %s)' % (type(e).__name__, e)); self.pr = False
+        return self.pr or None
+
+    def grid_ticks(self, ppq):
+        """FL's snap in ticks (one step where it is not a fixed length: line, cell, none)."""
+        return max(1, int(round(ppq / 4.0 * SNAP_STEPS.get(call(ui, 'getSnapMode', default=8), 1.0))))
+
+    def edit_notes(self, score, f):
+        """Quantize / nudge / transpose the piano roll's selected notes (all of them if none is selected); returns how many."""
+        notes = [score.getNote(i) for i in range(score.noteCount)]
+        notes = [n for n in notes if n.selected] or notes
+        g = self.grid_ticks(score.PPQ)
+        for n in notes:
+            if f in ('quantize', 'quantize50'):
+                d = int(n.time / float(g) + 0.5) * g - n.time       # (halfway rounds up, not to even)
+                n.time = n.time + (d if f == 'quantize' else int(d / 2))
+            elif f in ('nudge-', 'nudge+'): n.time = max(0, n.time + (g if f == 'nudge+' else -g))
+            else: n.number = clamp(n.number + TRANSPOSE[f], 0, FL_NOTE_MAX)
+        return len(notes)
+
+    def edit_steps_all(self, f):
+        """The same on the selected channel's steps (in Step mode the held ones, if any); returns how many. A note is moved only through its shift,
+        which FL keeps as the note's position in the pattern: FL moves the note there and it keeps its length (switching steps off and on would
+        make new notes without one)."""
+        c = self.chan(); total = self.steps(); pps = self.pps(); span = total * pps
+        on = [i for i in range(total) if call(channels, 'getGridBit', c, i, default=False)]
+        if self.mode == 'step' and self.held: on = [i for i in on if i in self.held]
+        if f in TRANSPOSE:
+            for i in on:
+                self.put_step(c, i, 1, clamp(self.step_value(c, i, 1) + TRANSPOSE[f], 0, 127))
+                if i in self.held: self.held[i] = 'edited'
+            return len(on)
+        nudge = max(1, int(pps * cfg.NUDGE_STEPS))
+        moves = []
+        for i in on:
+            pos = i * pps + self.step_value(c, i, 7)
+            if f == 'nudge+': new = pos + nudge
+            elif f == 'nudge-': new = pos - nudge
+            else:
+                grid = int(pos / float(pps) + 0.5) * pps                # the nearest step line (halfway rounds up)
+                new = grid if f == 'quantize' else pos + int((grid - pos) / 2.0)
+            moves.append((i, pos, new))
+        # Each note is found by its step, so a note moved into a step must not be found again there: going right, the later steps first; going left,
+        # the earlier ones; what goes round the pattern's end last.
+        right = f != 'nudge-'
+        moves.sort(key=lambda m: (not 0 <= m[2] < span, -m[0] if right else m[0]))
+        for i, pos, new in moves:
+            if new != pos: self.set_step(c, i, 7, new % span)
+        for i in self.held: self.held[i] = 'edited'                  # (held steps stay as they are when let go)
+        return len(moves)
 
     def clear_mute_solo(self):
         """Shift + Solo: every mute and solo off (the channels; in the Mixer the inserts)."""
@@ -460,11 +563,17 @@ class Controller:
         return max(16, int(beats) * 4)
 
     def clear_steps(self, chans):
+        self.save_undo('Clear steps')
         for c in chans:
             for i in range(self.steps()): call(channels, 'setGridBit', c, i, 0)
 
     # ---- the encoder ----------------------------------------------------------------------------------------------------------------------------
+    def in_menu(self): return bool(call(ui, 'isInPopupMenu', default=False))
+
     def turn(self, d):
+        if self.in_menu():                                          # an FL popup menu (a right-click menu): the encoder moves its highlight, push picks,
+            for _ in range(min(abs(d), 8)): call(ui, 'down' if d > 0 else 'up')     # Shift + push closes it
+            self.message('MENU', self.fl_hint() or 'PUSH = SELECT', hint=False); return
         if self.mode == 'step' and self.held: self.edit_steps(d); return
         tg, fine = self.target, self.push
         c = self.chan()

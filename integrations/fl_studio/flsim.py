@@ -21,6 +21,8 @@ class Project:
         self.tempo = 140.0; self.metronome = False; self.swing = 0.0
         self.hint = ''; self.log = []; self.out = []; self.windows = set()
         self.steps = {}; self.graph = False; self.precount = False; self.looprec = False; self.recpps = 24
+        self.popup = None                                           # an open popup menu: [items, highlighted index], or None
+        self.focused = None; self.snap = 8                          # the focused window, FL's snap (midi.Snap_Step)
         self.pgroup = -1; self.pgroups = []                         # FL's pattern groups: the selected one (-1 = all patterns), [(name, (pattern numbers))]
 
 P = None
@@ -45,6 +47,10 @@ def install(fl2026=True):
     def sel1(i, g=False): P.sel = i; log('selectOneChannel', i)
     def stepset(index, patNum, step, param, value, g=False):          # (FL's step parameters; `index` is global with useGlobalIndex)
         i = index - GLOBAL if g else index; log('setStepParameterByIndex', i, patNum, step, param, value); P.steps[(i, patNum, step, param)] = value
+        to = value // P.recpps if param == 7 else step                  # the shift is the note's position in the pattern: FL moves the note there,
+        if to != step and step in C(i)['grid']:                          # with everything it has (its length too); seen with FL 2026.1
+            for key in [k for k in P.steps if k[:3] == (i, patNum, step)]: P.steps[(i, patNum, to, key[3])] = P.steps.pop(key)
+            C(i)['grid'].discard(step); C(i)['grid'].add(to)
     def stepget(i, step, param, g=False): return P.steps.get((i, P.cur, step, param), -1)
     def graph(temporary, param, step, index, g=True): P.graph = True; log('showGraphEditor', param, step, index - GLOBAL if g else index)
     def setvol(i, v, pick=0, g=False): C(i)['vol'] = v; log('setChannelVolume', i, v)
@@ -111,11 +117,23 @@ def install(fl2026=True):
                    getParamValueString=lambda p, i, slot=-1, pick=0, g=False: '%d st' % round(params(i)[p][1] * 48 - 24),
                    nextPreset=nextp, prevPreset=prevp, getPadInfo=padinfo, getName=lambda i, slot=-1, flag=0, p=0, g=False: 'Preset %d' % C(i).get('presets', 0))
     def win(name): return lambda *a: log(name, *a)
-    ui = _mod('ui', jog=win('jog'), next=win('next'), previous=win('previous'), enter=win('enter'), left=win('left'), right=win('right'),
+    def menu_move(d):
+        def f(value=1):
+            log('down' if d > 0 else 'up')
+            m = P.popup
+            if m: m[1] = max(0, min(len(m[0]) - 1, m[1] + d)); P.hint = m[0][m[1]]
+        return f
+    def enter(*a):
+        log('enter')
+        if P.popup: P.chosen = P.popup[0][P.popup[1]]; P.popup = None
+    def closemenu(): log('closeActivePopupMenu'); P.popup = None
+    ui = _mod('ui', jog=win('jog'), next=win('next'), previous=win('previous'), enter=enter, up=menu_move(-1), down=menu_move(1),
+              isInPopupMenu=lambda: P.popup is not None, closeActivePopupMenu=closemenu, left=win('left'), right=win('right'),
               showWindow=lambda w: (P.windows.add(w), log('showWindow', w)), hideWindow=lambda w: (P.windows.discard(w), log('hideWindow', w)),
-              setFocused=win('setFocused'), getHintMsg=lambda: P.hint, isMetronomeEnabled=lambda: P.metronome, setHintMsg=lambda m: setattr(P, 'hint', m),
+              setFocused=lambda w: (setattr(P, 'focused', w), log('setFocused', w)), getFocused=lambda w: P.focused == w,
+              getVisible=lambda w: w in P.windows, getSnapMode=lambda: P.snap, getHintMsg=lambda: P.hint, isMetronomeEnabled=lambda: P.metronome, setHintMsg=lambda m: setattr(P, 'hint', m),
               isPrecountEnabled=lambda: P.precount, isLoopRecEnabled=lambda: P.looprec)
-    general = _mod('general', undoUp=win('undoUp'), undoDown=win('undoDown'), getVersion=lambda: 40, dumpScoreLog=lambda time, silent=False: log('dumpScoreLog', time, silent))
+    general = _mod('general', saveUndo=lambda name, flags, update=True: log('saveUndo', name, flags), undoUp=win('undoUp'), undoDown=win('undoDown'), getVersion=lambda: 40, dumpScoreLog=lambda time, silent=False: log('dumpScoreLog', time, silent))
     device = _mod('device', midiOutMsg=lambda m, *a: P.out.append(('msg', m)), midiOutSysex=lambda b: P.out.append(('sysex', bytes(b))),
                   isAssigned=lambda: True, getName=lambda: 'Maschine Mikro MK3',
                   getLinkedValue=lambda e: P.swing if e == REC_MainShuffle else -1.0,
@@ -128,6 +146,23 @@ def install(fl2026=True):
 FPT_TapTempo, FPT_Metronome, FPT_TempoJog, FPT_CountDown, FPT_LoopRecord, FPT_ShuffleJog = 106, 110, 105, 115, 113, 122   # (FL's values: API stubs midi/__gt_commands.py)
 REC_MainShuffle = 0x4000 * 0x10000 + 1              # (REC_Global_First + 1: midi/__rec_events)
 GLOBAL = 100                                        # the stand-in's global channel index = the Channel Rack position + 100, so a mix-up shows
+
+class PRNote:
+    """A note of FL's piano-roll scripting module (flpianoroll.Note), as far as the script uses it."""
+    def __init__(self, time, number, selected=False, length=24): self.time, self.number, self.selected, self.length = time, number, selected, length
+
+def piano_roll(notes, ppq=96):
+    """Makes FL's piano-roll scripting module importable (flpianoroll.score with these notes); piano_roll(None) takes it away again (an FL that
+    does not let a controller script use it)."""
+    if notes is None: sys.modules.pop('flpianoroll', None); return None
+    m = types.ModuleType('flpianoroll'); m.score = _Score(ppq, notes); sys.modules['flpianoroll'] = m
+    return m.score
+
+class _Score:
+    def __init__(self, ppq, notes): self.PPQ, self.notes = ppq, list(notes)
+    @property
+    def noteCount(self): return len(self.notes)
+    def getNote(self, i): return self.notes[i]
 
 class Event:
     """FL's event object, as far as the script reads it."""

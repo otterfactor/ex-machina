@@ -192,6 +192,24 @@ press(c, 'Shift+Browser'); check('Shift + Browser: hidden, no target', (calls('h
 P.log.clear(); press(c, 'Favorites'); check('Favorites: the selected channel\'s plug-in window', calls('showEditor'), [(3,)])
 check('the encoder touch is CC 9 in the FL Studio mapping (the script keeps it from FL, so Link to controller cannot learn it)', tb.BUTTON_CC.get('Encoder Touch'), 9)
 
+# ---- FL's popup menus on the encoder (right-click menus; Rec's question what to record blocks controller scripts in FL, nothing to test) ----
+import io, contextlib
+REC_MENU = ['Audio, into the Edison audio editor/recorder', 'Audio, into the playlist as an audio clip', 'Automation & score', 'Everything', 'Show me the help']
+_so = contextlib.redirect_stdout(io.StringIO()); _so.__enter__()
+c = fresh(); press(c, 'Volume'); P.log.clear(); P.popup = [REC_MENU, 0]; P.chosen = None; vol = P.ch[0]['vol']
+enc(c, 1); enc(c, 1)
+check('a popup menu open (Record\'s prompt): the encoder moves its highlight (down, down), not the volume; the screen shows the item (FL\'s hint)',
+      (calls('down'), P.ch[0]['vol'] == vol, screen(c)[1], screen(c)[2][:12]), ([(), ()], True, 'MENU', 'AUTOMATION &'))
+enc(c, -1); check('... turned back: up', (calls('up'), P.popup[1]), ([()], 1))
+cc(c, 8, 127); cc(c, 8, 0); c.idle()
+check('... the push picks the highlighted item (audio into the playlist), and is not taken as the fine-step modifier', (P.chosen, P.popup, c.push), (REC_MENU[1], None, False))
+enc(c, 1); check('... the menu gone: the encoder is the target\'s again (volume +1 %)', round(P.ch[0]['vol'] - vol, 3), 0.01)
+P.popup = [REC_MENU, 0]; press(c, 'Shift+Encoder Push')
+check('Shift + push closes a popup menu without choosing (instead of resetting the volume)', (P.popup, calls('closeActivePopupMenu'), screen(c)[1:3]), (None, [()], ['MENU', 'CLOSED']))
+P.popup = [REC_MENU, 0]; P.hint = REC_MENU[0]; cc(c, 9, 127); c.idle()
+check('... touching the encoder over a menu says what it does', screen(c)[1:3], ['MENU', 'TURN, PUSH = SELECT']); cc(c, 9, 0); P.popup = None
+_so.__exit__(None, None, None)
+
 # ---- the step editor, Shift, the strip, focus and the hint bar (the 2026-10-21 research: FLkey / Fire / DrivenByMoss ideas) ----------------------------
 def note(c, n, vel, on=True):
     e = Event((0x90 if on else 0x80) | tb.CHANNEL, tb.PAD_NOTE[n], vel if on else 0); c.midi(e); c.idle(); return e.handled
@@ -216,13 +234,74 @@ check('setting STEP_VELOCITY off: the step is set with FL\'s default velocity (n
 exm_settings.STEP_VELOCITY = True
 
 c = fresh(); P.log.clear()
-check('the device reports Shift (CC 111): handled, a help line on the screen while it is held', (shift(c, True), screen(c)[1]), (True, 'SHIFT PADS'))
+check('the device reports Shift (CC 111): handled, a help line on the screen while it is held', (shift(c, True), screen(c)[1:3]), (True, ['SHIFT 1 UNDO 5 QUANT', '7/8 NUDGE 13-16 PITCH']))
 check('Shift + pad 1 = UNDO (printed on the pad): undo, the note goes nowhere, nor does its release', (note(c, 1, 100), calls('undoUp'), note(c, 1, 0, False)), (True, [()], True))
-note(c, 2, 100); note(c, 5, 100); note(c, 6, 100); note(c, 11, 100)
-check('... pad 2 REDO, pad 5 QUANTIZE, pad 6 QUANTIZE 50% (the note starts), pad 11 COPY', (calls('undoDown'), calls('quickQuantize'), calls('globalTransport')[-1]), ([()], [(0, 0), (0, 1)], (51, 1)))
-for n in (2, 5, 6, 11): note(c, n, 0, False)
+note(c, 2, 100); note(c, 11, 100)
+check('... pad 2 REDO, pad 11 COPY', (calls('undoDown'), calls('globalTransport')[-1]), ([()], (51, 1)))
+for n in (2, 11): note(c, n, 0, False)
 shift(c, False)
-check('Shift up: the help line goes; a pad plays again (in play mode it goes to FL)', (screen(c)[1] != 'SHIFT PADS', note(c, 1, 100)), (True, False))
+check('Shift up: the help line goes; a pad plays again (in play mode it goes to FL)', (screen(c)[1] != 'SHIFT 1 UNDO 5 QUANT', note(c, 1, 100)), (True, False))
+
+def spad(c, n): shift(c, True); note(c, n, 100); note(c, n, 0, False); shift(c, False); return screen(c)[1:3]
+def stepv(ch, i, param): return P.steps.get((ch, P.cur, i, param))
+# ---- Shift + pads 5-8, 13-16 on the channel's steps (no piano roll in front) ----
+def pos(ch, i): v = stepv(ch, i, 7); return i * 24 if v is None else v      # (FL keeps the shift as the note's position: step start + offset, 24 ticks a step)
+c = fresh(); P.ch[0]['grid'] = {0, 4}; P.steps[(0, 1, 4, 7)] = 4 * 24 + 10; P.steps[(0, 1, 4, 'len')] = 33
+check('Shift + pad 5 QUANTIZE, no piano roll: each note of the selected channel onto the nearest step line (step 5: 106 -> 96; step 1 stays), the screen says how many',
+      (spad(c, 5), pos(0, 4), pos(0, 0)), (['QUANTIZE', 'KICK 2 STEPS'], 96, 0))
+check('... one undo point first, so FL\'s undo takes back only the quantize', [a for a in calls('saveUndo')], [('Ex-Machina: Quantize', 2)])
+P.steps[(0, 1, 4, 7)] = 4 * 24 + 10; spad(c, 6); check('... pad 6 QUANTIZE 50%: halfway (106 -> 101)', pos(0, 4), 101)
+P.steps[(0, 1, 4, 7)] = 4 * 24 + 20; spad(c, 6); check('... a note late in its step goes halfway to the next step line (116 -> 118)', pos(0, 4), 118)
+spad(c, 5)
+check('... and QUANTIZE puts it on the next step line (120 = step 6), moved by its position only: it keeps its other properties (its length)',
+      (P.ch[0]['grid'], pos(0, 5), stepv(0, 5, 'len')), ({0, 5}, 120, 33))
+spad(c, 14); spad(c, 14); spad(c, 15)
+check('... pads 14 (SEMITONE +) twice, 15 (OCTAVE -): each set step\'s pitch 60 -> 62 -> 50', (stepv(0, 0, 0), stepv(0, 5, 0), spad(c, 13)[0]), (50, 50, 'SEMITONE -'))
+spad(c, 8)
+check('... pad 8 NUDGE >: half a step later (Maschine\'s nudge grid: 0 -> 12, 120 -> 132), each still on its step', (P.ch[0]['grid'], pos(0, 0), pos(0, 5)), ({0, 5}, 12, 132))
+spad(c, 8)
+check('... again: into the next steps (24, 144), with their pitch and length', (P.ch[0]['grid'], pos(0, 1), pos(0, 6), stepv(0, 6, 0), stepv(0, 6, 'len')), ({1, 6}, 24, 144, 49, 33))
+spad(c, 7); spad(c, 7); spad(c, 7)
+check('... pad 7 three times: back, and round the pattern\'s start (24 -> -12 = 372, step 16)', (P.ch[0]['grid'], pos(0, 15), pos(0, 4)), ({4, 15}, 372, 108))
+exm_settings.NUDGE_STEPS = 1; spad(c, 8); exm_settings.NUDGE_STEPS = 0.5
+check('NUDGE_STEPS = 1: a whole step (372 -> 12 round the end, 108 -> 132)', (P.ch[0]['grid'], pos(0, 0), pos(0, 5)), ({0, 5}, 12, 132))
+check('... no quick quantize and no piano-roll access tried for steps', (calls('quickQuantize'), c.pr), ([], None))
+c = fresh(); P.ch[0]['grid'] = {0, 4}; press(c, 'Step'); P.log.clear(); note(c, 3, 100); note(c, 3, 0, False)
+check('Step mode: setting a step from a pad saves an undo point first', calls('saveUndo'), [('Ex-Machina: Step on', 2)])
+note(c, 3, 100); note(c, 3, 0, False); check('... and clearing it', calls('saveUndo')[-1], ('Ex-Machina: Step off', 2))
+note(c, 1, 100); enc(c, 1); enc(c, 1); note(c, 1, 0, False)
+check('... a held step edited with the encoder: one undo point for the whole hold', calls('saveUndo')[-1:], [('Ex-Machina: Step velocity', 2)])
+check('... (no more than one)', len([a for a in calls('saveUndo') if a[0] == 'Ex-Machina: Step velocity']), 1)
+c = fresh(); P.ch[0]['grid'] = {0, 4}; press(c, 'Step'); note(c, 5, 100); spad(c, 16); note(c, 5, 0, False)
+check('Step mode with a step held (step 5): only that step (pitch 72), and it stays on when let go (edited)', (stepv(0, 4, 0), stepv(0, 0, 0), P.ch[0]['grid']), (72, None, {0, 4}))
+c = fresh(); P.ch[0]['grid'] = {2}; press(c, 'Step'); note(c, 3, 100); [press(c, 'Events') for _ in range(7)]; enc(c, 3); a = screen(c)[1:3]; note(c, 3, 0, False)
+check('hold step 3 + encoder on SHIFT: the offset in the step (+3), written as the position FL keeps (2 * 24 + 3)', (stepv(0, 2, 7), a), (51, ['STEP 3 SHIFT', '3']))
+
+# ---- ... on the piano roll's notes (flpianoroll, if FL lets a controller script use it) ----
+c = fresh(); P.windows.add(midi.widPianoRoll)
+sc = flsim.piano_roll([flsim.PRNote(30, 60, True), flsim.PRNote(50, 62)])
+check('the piano roll open, notes selected: pad 5 quantizes only the selected note to FL\'s snap (1 step = 24 ticks: 30 -> 24)', (spad(c, 5), sc.notes[0].time, sc.notes[1].time), (['QUANTIZE', '1 NOTE'], 24, 50))
+sc.notes[0].time = 30; spad(c, 6); check('... pad 6 QUANTIZE 50%: halfway (30 -> 27)', sc.notes[0].time, 27)
+sc.notes[0].selected = False; spad(c, 5)
+check('... nothing selected: every note (27 -> 24, 50 -> 48)', [n.time for n in sc.notes], [24, 48])
+P.snap = 7; sc.notes[0].time = 30; spad(c, 5); check('... FL\'s snap at 1/2 step (12 ticks): 30 -> 36', sc.notes[0].time, 36)
+spad(c, 8); spad(c, 8); spad(c, 7)
+check('... pads 8, 8, 7: nudged by one snap unit each (36 -> 48, 48 -> 60)', [n.time for n in sc.notes], [48, 60])
+sc.notes[1].time = 5; spad(c, 7); check('... a nudge never goes before the start (5 -> 0)', sc.notes[1].time, 0)
+spad(c, 14); spad(c, 16); spad(c, 15); spad(c, 13)
+check('... pads 14, 16, 15, 13: semitone +, octave +, octave -, semitone - (back to 60 / 62)', [n.number for n in sc.notes], [60, 62])
+sc.notes[0].number = 125; spad(c, 16); check('... transposing stops at FL\'s highest note (131)', sc.notes[0].number, 131)
+P.snap = 8; press(c, 'Step'); sc.notes[0].time = 30; P.ch[0]['grid'] = {2}; spad(c, 5)
+check('Step mode with the piano roll open but not focused: the steps, not the notes', (sc.notes[0].time, spad(c, 5)), (30, ['QUANTIZE', 'KICK 1 STEP']))
+P.focused = midi.widPianoRoll; spad(c, 5); check('... the piano roll focused: the notes', sc.notes[0].time, 24)
+flsim.piano_roll(None)
+import io, contextlib
+c = fresh(); P.windows.add(midi.widPianoRoll)
+P.ch[0]['grid'] = {0, 4}
+with contextlib.redirect_stdout(io.StringIO()) as so: a = spad(c, 5); d = spad(c, 14); spad(c, 13)
+check('an FL that does not let a controller script use the piano roll (FL 2026.1): the pads work on the channel\'s steps (its notes on steps), no quick quantize',
+      (a, d, stepv(0, 4, 0), calls('quickQuantize')), (['QUANTIZE', 'KICK 2 STEPS'], ['SEMITONE +', 'KICK 2 STEPS'], 60, []))
+check('... the reason is printed once to FL\'s Script output', so.getvalue().count('no piano roll access'), 1)
 c = fresh(); e = Event(0xB0 | tb.CHANNEL, tb.PADMODE_REPORT_CC, 2); c.midi(e)
 check('the device reports its pad mode (CC 116, here 2 = chords): handled (FL never sees it), kept', (e.handled, c.dev_padmode), (True, 2))
 c = fresh(); press(c, 'Shift+Rec'); a = screen(c)[1:3]; press(c, 'Shift+Restart'); b = screen(c)[1:3]
@@ -449,10 +528,10 @@ if len(sys.argv) > 2:
     x.press('Volume'); x.device(x.d.translate(devsim.report1(enc=3))); x.sc.settle()
     check('device: Volume + 3 encoder steps -> +3 %, the screen says so', (round(P.ch[0]['vol'], 2), out.clean(x.c.lines[2]).rstrip(), x.sc.fb() == out.frame(x.c.lines)), (0.81, '81%', True))
 
-    x = Link(); x.device(x.d.translate(devsim.report1([B['Shift']])))
-    check('device: holding Shift on the device shows the script\'s help line (the firmware reports Shift)', out.clean(x.c.lines[1]).rstrip(), 'SHIFT PADS')
+    x = Link(); P.ch[0]['grid'] = {0}; x.device(x.d.translate(devsim.report1([B['Shift']])))
+    check('device: holding Shift on the device shows the script\'s help line (the firmware reports Shift)', out.clean(x.c.lines[1]).rstrip(), 'SHIFT 1 UNDO 5 QUANT')
     pk = x.d.translate(devsim.report2([(PADIDX[5], 1, 3000)])); x.device(pk); x.device(x.d.translate(devsim.report2([(PADIDX[5], 3, 0)]))); x.device(x.d.translate(devsim.report1()))
-    check('device: Shift + pad 5 on the device -> FL quick-quantizes the selected channel', calls('quickQuantize')[-1:], [(0, 0)])
+    check('device: Shift + pad 5 on the device -> QUANTIZE on the selected channel\'s steps (no piano roll open), shown', out.clean(x.c.lines[1]).rstrip(), 'QUANTIZE')
     exm_settings.DRUM_LAYOUTS = True
     x = Link(); x.press('Keyboard'); P.log.clear()
     out1 = x.d.translate(devsim.report2([(PADIDX[1], 1, 3000)])); x.device(out1)

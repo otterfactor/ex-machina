@@ -11,6 +11,7 @@ HINT_BAR = True                 # messages also go to FL's hint bar
 DRUM_LAYOUTS = True             # play mode follows the channel's plug-in: FPC plays its own pad notes (banks A / B on Left / Right), Slicex and Fruity Slicer
                                 #   play slices 1-16, 17-32 ... (from note 60); the device's Keyboard / Chords modes do not apply to such a channel
 STEP_OVERVIEW = True            # Step mode: the whole pattern (up to 128 steps) as a strip on the screen, the pads' page bracketed, the playhead
+NUDGE_STEPS = 0.5               # Shift + pad 7 / 8: how far a nudge moves the notes, in steps (Maschine's nudge grid: half a step)
 TOUCH_PREVIEW = True            # touching the encoder shows what it would change and the value, without changing it
 # Variation: which parameters of a plug-in go on the 16 pads, by name as FL shows them (Link to controller lists them), in pad order (more than 16:
 # Left / Right page). A plug-in not listed here gets every parameter that has a name. For example:
