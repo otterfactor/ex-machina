@@ -9,7 +9,8 @@ Thanks for looking. Ex-Machina is a hobby project; changes are welcome, but plea
 ## Setting up
 - **Python 3** with a virtual environment: `python3 -m venv .venv && .venv/bin/pip install unicorn pyelftools usb-protocol pyusb mido python-rtmidi`
   (`.venv/` is ignored by git).
-- **clang** with the ARM target (`--target=thumbv7m-none-eabi`); Apple's clang works.
+- **clang** with the ARM target (`--target=thumbv7m-none-eabi`): Apple's (`xcode-select --install`), LLVM's on Windows (`winget install LLVM.LLVM`;
+  `build_patch.py` also looks in `C:\Program Files\LLVM\bin`), or your Linux distribution's. `CLANG=<path>` picks another one.
 - **node** for the setup page's tests (optional: `run_tests.sh` skips them without it).
 - **Your own copy of NI's firmware v1.20**, carved from NI's updater: `python3 tools/carve_fw.py <NI's updater> proprietary/MM3_firmware_1.20_stock.bin` (the .zip NI ships, the Mac app, or the Windows `.exe`).
   Every build starts from it, and the tests run NI's code in the emulator to compare ours against it.

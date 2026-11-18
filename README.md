@@ -61,7 +61,7 @@ python3 tools/carve_fw.py <NI's updater: the .zip, MM3Updater.app or MM3Updater.
 PYTHON=.venv/bin/python tests/run_tests.sh proprietary/MM3_firmware_1.20_stock.bin /tmp/exm-work
 python3 tools/ui/serve.py        # the setup page, then open http://localhost:8765 in Chrome or Edge
 ```
-The build needs clang with the ARM target (Apple's clang works); the page's tests need node. [`CONTRIBUTING.md`](CONTRIBUTING.md) has
+The build needs clang with the ARM target (Apple's clang works; on Windows `winget install LLVM.LLVM`); the page's tests need node. [`CONTRIBUTING.md`](CONTRIBUTING.md) has
 the details and the rules for changes.
 
 ## License

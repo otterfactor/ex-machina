@@ -6,7 +6,7 @@
   firmware updater (the `.zip` NI's site offers, for Mac or Windows); the setup page and the build tools take it from there.
 - To flash from the browser: **Chrome or Edge** on a computer (Web MIDI and WebUSB; Safari and Firefox lack one or both).
 - To flash from the command line, or to build the images yourself: Python 3 with `pyusb` and libusb, and for building, clang with the ARM target
-  (see chapter 7 and the repository's `README.md`).
+  (on Windows `winget install LLVM.LLVM`; see chapter 7 and the repository's `README.md`).
 
 ## Two firmware images
 Ex-Machina comes in two forms that behave the same for playing:

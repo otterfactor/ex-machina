@@ -61,5 +61,13 @@ with tempfile.TemporaryDirectory() as t:
         check('build_patch refuses an image that is not firmware 1.20' + (' (--native)' if extra else ''),
               rc != 0 and not os.path.exists(path('img.bin')) and 'carve_fw' in msg, (rc, msg[-300:]))
 
+    # without clang (a Windows machine with no LLVM): a message saying what to install, not a FileNotFoundError traceback
+    env = {k: v for k, v in os.environ.items() if k not in ('CLANG', 'ProgramFiles', 'ProgramFiles(x86)')}
+    env['PATH'] = t                                                  # a folder with no clang in it
+    p = subprocess.run([sys.executable, BUILD, sys.argv[1], path('img.bin')], capture_output=True, text=True, env=env)
+    msg = p.stdout + p.stderr
+    check('build_patch without clang says what to install', p.returncode != 0 and 'clang was not found' in msg and 'winget' in msg
+          and 'Traceback' not in msg and not os.path.exists(path('img.bin')), msg[-400:])
+
 print('ALL PASS' if not fails else f'{fails} FAILED')
 sys.exit(1 if fails else 0)

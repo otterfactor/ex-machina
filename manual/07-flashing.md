@@ -74,7 +74,7 @@ python3 firmware/build_patch.py stock.bin patched.bin               # the patche
 python3 firmware/build_patch.py stock.bin standalone.bin --native   # the standalone image (no NI code)
 tests/run_tests.sh stock.bin workdir                             # every test, in an emulator
 ```
-Building needs clang with the ARM target and `pip install unicorn pyelftools usb-protocol` for the tests. `build_patch.py --help` lists the
+Building needs clang with the ARM target (on Windows: `winget install LLVM.LLVM`) and `pip install unicorn pyelftools usb-protocol` for the tests. `build_patch.py --help` lists the
 build options (USB identity, default transport, pad base, colours, velocity curve...); almost everything is also changeable later from the setup page.
 
 ## Restoring NI's original firmware

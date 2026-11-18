@@ -16,7 +16,7 @@ Patches (all addresses are flash addresses in the stock image):
   7. 0x08008d06  bl watchdog kick -> mmk3_tick        main-loop tick: re-applies the LEDs once the stock startup is over
   new flash: config block, device + configuration descriptors, the velocity curve tables, display font and texts, translator code (last)
 Everything else (ADC/DMA pad scan, linearisation, button matrix, strip I2C, LED chips, DFU) is untouched."""
-import argparse, hashlib, json, os, re, struct, subprocess, sys, tempfile
+import argparse, hashlib, json, os, re, shutil, struct, subprocess, sys, tempfile
 from elftools.elf.elffile import ELFFile
 
 BASE = 0x08003000
@@ -76,9 +76,28 @@ def bw(src, dst):
     j1 = (~(i1 ^ s)) & 1; j2 = (~(i2 ^ s)) & 1
     return struct.pack('<HH', 0xF000 | (s << 10) | ((off >> 12) & 0x3FF), 0x9000 | (j1 << 13) | (j2 << 11) | ((off >> 1) & 0x7FF))
 
+def find_clang():
+    """clang: $CLANG, else on PATH, else LLVM's default install folder on Windows (its installer does not always add it to PATH).
+    Any clang with the ARM target works (Apple's, LLVM's releases, distributions'): only -c is used, no linker, no C library."""
+    if os.environ.get('CLANG'):
+        return os.environ['CLANG']
+    found = shutil.which('clang')
+    if found:
+        return found
+    for base in (os.environ.get('ProgramFiles'), os.environ.get('ProgramFiles(x86)')):
+        p = base and os.path.join(base, 'LLVM', 'bin', 'clang.exe')
+        if p and os.path.isfile(p):
+            return p
+    sys.exit("build_patch: clang was not found. Install it, then run this again:\n"
+             "  Windows: winget install LLVM.LLVM   (or the installer from https://github.com/llvm/llvm-project/releases)\n"
+             "  macOS:   xcode-select --install\n"
+             "  Linux:   your distribution's clang package\n"
+             "or point the CLANG environment variable at a clang that has the ARM target.")
+
+
 def compile_c(here, work, native=False):
     obj = os.path.join(work, 'translate.o')
-    subprocess.check_call(['clang', '--target=thumbv7m-none-eabi', '-mcpu=cortex-m3', '-Os', '-ffreestanding',
+    subprocess.check_call([find_clang(), '--target=thumbv7m-none-eabi', '-mcpu=cortex-m3', '-Os', '-ffreestanding',
                            '-fno-builtin', '-fno-stack-protector', '-Wall', '-c'] + (['-DNATIVE'] if native else []) + [
                            os.path.join(here, 'translate.c'), '-o', obj])
     with open(obj, 'rb') as f:
