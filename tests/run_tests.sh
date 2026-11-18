@@ -25,6 +25,8 @@ echo "== test_vel_curve (build options: --vel-curve, --vel-table, --vel-shift, s
 "$PY" "$HERE/test_vel_curve.py" "$STOCK" "$WORK/data_init.bin" "$WORK/vc" | tail -3
 echo "== test_flash_model (the flash model against the stock flash routines)"
 "$PY" "$ROOT/tools/emu/test_flash_model.py" "$WORK/patched.bin" | tail -2
+echo "== test_carve_fw (NI's image found in every form of the updater, anything else refused; build_patch refuses other images)"
+"$PY" "$ROOT/tools/test_carve_fw.py" "$STOCK" | tail -2
 echo "== test_restore_stock (tools/restore_stock.sh hands only NI's exact firmware to the flash script)"
 "$PY" "$ROOT/tools/test_restore_stock.py" "$STOCK" | tail -2
 UI="$ROOT/tools/ui"

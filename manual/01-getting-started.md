@@ -3,7 +3,7 @@
 ## What you need
 - A **Maschine Mikro MK3** and a USB cable.
 - **Your own copy of NI's firmware 1.20.** NI's firmware is not part of this project and is never distributed with it. It is inside NI's
-  firmware updater (the `MM3Updater` app on a Mac, the `.exe` on Windows); the setup page and the build tools take it from there.
+  firmware updater (the `.zip` NI's site offers, for Mac or Windows); the setup page and the build tools take it from there.
 - To flash from the browser: **Chrome or Edge** on a computer (Web MIDI and WebUSB; Safari and Firefox lack one or both).
 - To flash from the command line, or to build the images yourself: Python 3 with `pyusb` and libusb, and for building, clang with the ARM target
   (see chapter 7 and the repository's `README.md`).

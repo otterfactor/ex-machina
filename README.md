@@ -57,7 +57,7 @@ another controller, such as the Maschine MK3, could be added.
 ## Getting started
 ```bash
 python3 -m venv .venv && .venv/bin/pip install unicorn pyelftools usb-protocol pyusb mido python-rtmidi
-python3 tools/carve_fw.py <path to NI's MM3Updater binary> proprietary/MM3_firmware_1.20_stock.bin
+python3 tools/carve_fw.py <NI's updater: the .zip, MM3Updater.app or MM3Updater.exe> proprietary/MM3_firmware_1.20_stock.bin
 PYTHON=.venv/bin/python tests/run_tests.sh proprietary/MM3_firmware_1.20_stock.bin /tmp/exm-work
 python3 tools/ui/serve.py        # the setup page, then open http://localhost:8765 in Chrome or Edge
 ```

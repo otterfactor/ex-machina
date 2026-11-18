@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 import * as P from './patch.js';
 import * as F from '../../flasher/dfu.js';
 import { hex } from './mmk3.js';
@@ -37,6 +38,32 @@ const container = new Uint8Array([...filler(5000, 1), ...decoy.slice(0, 20000), 
 const found = await P.findStockImage(container, bundle);
 check('findStockImage: inside a larger file, after a decoy with the same first 8 bytes', found && hex(found) === hex(stock));
 check('findStockImage: nothing found in an unrelated file', (await P.findStockImage(filler(100000, 9), bundle)) === null);
+// zips, as NI ships the updaters: deflated and stored entries, the image in an inner zip, an unrelated zip
+const crcTable = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = (b) => { let c = 0xffffffff; for (const x of b) c = crcTable[(c ^ x) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function makeZip(files) {           // [[name, bytes, deflate?]]
+  const out = [], cd = []; let off = 0;
+  const u16 = (v) => [v & 255, v >>> 8], u32 = (v) => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, v >>> 24];
+  for (const [name, data, deflate] of files) {
+    const nm = new TextEncoder().encode(name), body = deflate ? new Uint8Array(deflateRawSync(data)) : data, crc = crc32(data), m = deflate ? 8 : 0;
+    const head = [...u32(0x04034b50), ...u16(20), ...u16(0), ...u16(m), ...u32(0), ...u32(crc), ...u32(body.length), ...u32(data.length), ...u16(nm.length), ...u16(0)];
+    cd.push([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0), ...u16(m), ...u32(0), ...u32(crc), ...u32(body.length), ...u32(data.length),
+      ...u16(nm.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off), ...nm]);
+    out.push(Uint8Array.from(head), nm, body); off += head.length + nm.length + body.length;
+  }
+  const cdb = cd.flat(), end = [...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(files.length), ...u16(files.length), ...u32(cdb.length), ...u32(off), ...u16(0)];
+  const all = [...out, Uint8Array.from(cdb), Uint8Array.from(end)], z = new Uint8Array(all.reduce((n, a) => n + a.length, 0));
+  let p = 0; for (const a of all) { z.set(a, p); p += a.length; }
+  return z;
+}
+const zipDeflated = makeZip([['readme.txt', filler(50000, 4), true], ['MM3Updater.exe', container, true]]);
+let f2 = await P.findStockImage(zipDeflated, bundle);
+check('findStockImage: in a zip (deflated, as NI ships the updaters)', f2 && hex(f2) === hex(stock));
+f2 = await P.findStockImage(makeZip([['__MACOSX/x', filler(100, 5), false], ['MM3Updater.app/Contents/MacOS/MM3Updater', container, false]]), bundle);
+check('findStockImage: in a zip (stored)', f2 && hex(f2) === hex(stock));
+f2 = await P.findStockImage(makeZip([['inner.zip', zipDeflated, true]]), bundle);
+check('findStockImage: in a zip inside a zip', f2 && hex(f2) === hex(stock));
+check('findStockImage: nothing found in a zip of unrelated files', (await P.findStockImage(makeZip([['a', filler(60000, 6), true]]), bundle)) === null);
 if (updaterPath) {
   const updater = new Uint8Array(readFileSync(updaterPath));
   const f = await P.findStockImage(updater, bundle);

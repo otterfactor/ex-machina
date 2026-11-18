@@ -94,7 +94,7 @@ Colour code = `colour * 4 + brightness`: colour 1 red, 2 orange, 3 light orange,
 
 ## Build and test
 ```bash
-python3 tools/carve_fw.py <MM3Updater binary> stock.bin               # stock image from the Mac updater
+python3 tools/carve_fw.py <NI's updater> stock.bin                  # stock image from the updater (.zip, .app or .exe)
 pip install unicorn pyelftools usb-protocol                           # clang with the ARM target is also needed
 tests/run_tests.sh stock.bin workdir                       # builds everything and runs every suite below
 ```

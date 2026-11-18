@@ -16,11 +16,12 @@ Patches (all addresses are flash addresses in the stock image):
   7. 0x08008d06  bl watchdog kick -> mmk3_tick        main-loop tick: re-applies the LEDs once the stock startup is over
   new flash: config block, device + configuration descriptors, the velocity curve tables, display font and texts, translator code (last)
 Everything else (ADC/DMA pad scan, linearisation, button matrix, strip I2C, LED chips, DFU) is untouched."""
-import argparse, json, os, re, struct, subprocess, sys, tempfile
+import argparse, hashlib, json, os, re, struct, subprocess, sys, tempfile
 from elftools.elf.elffile import ELFFile
 
 BASE = 0x08003000
 STOCK_LEN = 0x9DC8
+STOCK_SHA256 = '76ebf72d33961639a0bd042ba32354dd8dc07569be69175546eb9fc06e5c5917'   # NI's firmware 1.20, the only image the patch is made for
 SAVE_PAGE = 0x0801EC00               # the page the run-time config is saved to (translate.c); the image must end below it
 SLOT_BASE = 0x0801D800                # the four preset slots (one page each), the step pattern page and the save page follow; the image must end below this
 PAT_PAGE = 0x0801E800
@@ -253,6 +254,9 @@ def main():
     a = ap.parse_args()
     here = os.path.dirname(os.path.abspath(__file__))
     stock = bytes(open(a.src, 'rb').read()[:STOCK_LEN])
+    if hashlib.sha256(stock).hexdigest() != STOCK_SHA256:      # both images take bytes from it (the patched one all of NI's code, the standalone one the LED tables)
+        sys.exit(f"build_patch: {a.src} is not NI's firmware 1.20 for the Mikro MK3 (SHA-256 {STOCK_SHA256[:16]}...). "
+                 "Extract it from NI's updater with tools/carve_fw.py.")
     img = bytearray(b'\xff' * STOCK_LEN) if a.native else bytearray(stock)
 
     def put(addr, data, expect=None):

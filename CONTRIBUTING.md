@@ -11,7 +11,7 @@ Thanks for looking. Ex-Machina is a hobby project; changes are welcome, but plea
   (`.venv/` is ignored by git).
 - **clang** with the ARM target (`--target=thumbv7m-none-eabi`); Apple's clang works.
 - **node** for the setup page's tests (optional: `run_tests.sh` skips them without it).
-- **Your own copy of NI's firmware v1.20**, carved from NI's updater: `python3 tools/carve_fw.py <MM3Updater binary> proprietary/MM3_firmware_1.20_stock.bin`.
+- **Your own copy of NI's firmware v1.20**, carved from NI's updater: `python3 tools/carve_fw.py <NI's updater> proprietary/MM3_firmware_1.20_stock.bin` (the .zip NI ships, the Mac app, or the Windows `.exe`).
   Every build starts from it, and the tests run NI's code in the emulator to compare ours against it.
 
 ## Running the tests

@@ -27,7 +27,7 @@ and wait for the controller to come back with the new firmware. The whole run ta
 
 ## From the setup page
 *Firmware* tab:
-1. **Choose your firmware file**: NI's updater (the `MM3Updater` file inside the app on a Mac, the `.exe` on Windows) or the 40,392-byte image.
+1. **Choose your firmware file**: NI's updater as you downloaded it (the `.zip`, Mac or Windows), the `.exe` on Windows, or the 40,392-byte image.
    The page finds NI's image inside it by its checksum, applies Ex-Machina's patch (only Ex-Machina's own bytes; no NI code comes with this
    project) and checks the result against its expected checksum. It shows the image and its checksum.
 2. **Select the Maschine…**: the browser's USB chooser.
@@ -69,7 +69,7 @@ back as 17cc:1700, bcdDevice 0x0051
 
 ### Building the images yourself
 ```bash
-python3 tools/carve_fw.py <MM3Updater binary> stock.bin                     # NI's image out of the Mac updater (keep it private)
+python3 tools/carve_fw.py <NI's updater> stock.bin                        # NI's image out of the updater: .zip, .app or .exe (keep it private)
 python3 firmware/build_patch.py stock.bin patched.bin               # the patched image
 python3 firmware/build_patch.py stock.bin standalone.bin --native   # the standalone image (no NI code)
 tests/run_tests.sh stock.bin workdir                             # every test, in an emulator
