@@ -20,7 +20,8 @@ firmware read the [user manual](../manual/README.md); for adding another control
 (`clang --target=thumbv7m-none-eabi -Os`, see `build_patch.py compile_c`). The object may have no `.rodata` and no relocations, because it is
 placed at a fixed address in an image the linker never sees: every address is a constant, constant data (texts, the font, scale masks, velocity
 tables, the default configs, USB descriptors) is written into flash by `build_patch.py` at fixed addresses, and texts are referred to by number
-(the `T_*` enum). Switch statements can compile into a lookup table in `.rodata`; use `if` chains where that happens (the build refuses it).
+(the `T_*` enum). Switch statements could compile into a lookup table in `.rodata` (clang versions differ: LLVM 23 made one where Apple's clang 21 did not), so the
+build compiles with `-fno-jump-tables`; anything else that needs a relocation or a data section is refused with its name (`object_problems`).
 
 **Two images, one source.**
 - *Patched* (`build_patch.py stock.bin out.bin`): NI's firmware v1.20 with `bl` instructions redirected into our code (`build_patch.py`,

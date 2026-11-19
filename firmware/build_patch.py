@@ -95,18 +95,42 @@ def find_clang():
              "or point the CLANG environment variable at a clang that has the ARM target.")
 
 
+# -fno-jump-tables: no switch turned into a lookup table in .rodata. Versions differ in when they do it: Apple's clang 21 did not,
+# LLVM 23 (Homebrew; the Windows release is the same compiler) made one in translate_report, which the object must not have.
+CFLAGS = ['--target=thumbv7m-none-eabi', '-mcpu=cortex-m3', '-Os', '-ffreestanding', '-fno-builtin', '-fno-jump-tables',
+          '-fno-stack-protector', '-Wall', '-c']
+
+
+def object_problems(elf):
+    """What makes the object unusable at a fixed address: relocations in the code (calls to functions that are not in it, references to
+    other sections) and data sections (.rodata*, .data*, .bss*). Unwind tables (.ARM.exidx) are never copied, so they do not count."""
+    out = []
+    for sec in elf.iter_sections():
+        if sec.name.startswith(('.rel.', '.rela.')) and not sec.name.endswith('.ARM.exidx') and sec.data_size:
+            st = elf.get_section(sec['sh_link'])
+            names = set()
+            for r in sec.iter_relocations():
+                s = st.get_symbol(r['r_info_sym'])
+                names.add(s.name or (elf.get_section(s['st_shndx']).name if isinstance(s['st_shndx'], int) else '?'))
+            out.append(f"{sec.name}: refers to {', '.join(sorted(names))}")
+        elif sec.name.startswith(('.rodata', '.data', '.bss')) and sec.data_size:
+            out.append(f'{sec.name}: {sec.data_size} bytes')
+    return out
+
+
 def compile_c(here, work, native=False):
     obj = os.path.join(work, 'translate.o')
-    subprocess.check_call([find_clang(), '--target=thumbv7m-none-eabi', '-mcpu=cortex-m3', '-Os', '-ffreestanding',
-                           '-fno-builtin', '-fno-stack-protector', '-Wall', '-c'] + (['-DNATIVE'] if native else []) + [
-                           os.path.join(here, 'translate.c'), '-o', obj])
+    clang = find_clang()
+    subprocess.check_call([clang] + CFLAGS + (['-DNATIVE'] if native else []) + [os.path.join(here, 'translate.c'), '-o', obj])
     with open(obj, 'rb') as f:
         elf = ELFFile(f)
         text = elf.get_section_by_name('.text')
-        for n in ('.rel.text', '.rela.text', '.rodata', '.data'):
-            sec = elf.get_section_by_name(n)
-            if sec is not None and sec.data_size:
-                raise SystemExit(f'translate.o has {n}; use fixed addresses and no tables')
+        problems = object_problems(elf)
+        if problems:
+            ver = subprocess.run([clang, '--version'], capture_output=True, text=True).stdout.splitlines()[:1]
+            raise SystemExit('build_patch: this clang made code that cannot be placed at a fixed address (the firmware has no linker):\n  '
+                             + '\n  '.join(problems) + f"\n  clang: {ver[0] if ver else clang}\n"
+                             'Please report this output (https://github.com/otterfactor/ex-machina/issues).')
         syms = {s.name: s['st_value'] & ~1 for s in elf.get_section_by_name('.symtab').iter_symbols()}
         return text.data(), syms
 

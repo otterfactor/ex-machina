@@ -34,7 +34,9 @@ It builds the patched and the standalone image and runs every suite; it stops at
   tested in the emulator, host changes against the emulated firmware where they talk to it. Keep `run_tests.sh` passing.
 - **Generated files stay current.** After changing `host/mmk3_config.py` (the config layout, presets, button tables), run
   `tools/ui/gen_data.py`, `tools/ui/make_vectors.py` and `integrations/fl_studio/gen_tables.py`; after a firmware change,
-  `tools/ui/make_bundle.py <stock.bin> <patched.bin>`. `run_tests.sh` fails while any of them is stale.
+  `tools/ui/make_bundle.py <stock.bin> <patched.bin>`. `run_tests.sh` fails while any of them is stale. Different clang versions make different
+  (equally valid) code, so the bundle records the compiler it was made with and its check is skipped under another one; the published bundle
+  is made with Apple's clang.
 - **Firmware constraints.** One translation unit, no `.rodata`, no relocations (`build_patch.py` refuses them; `architecture.md` says why);
   the state and the config are fixed-layout structs whose sizes are asserted, and `struct cfg` is mirrored in `host/mmk3_config.py`; keep the
   stack in bounds (`tests/stack_depth.py`); a flash write must leave the old or the new data after a power cut (the flash model checks it).

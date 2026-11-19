@@ -69,5 +69,21 @@ with tempfile.TemporaryDirectory() as t:
     check('build_patch without clang says what to install', p.returncode != 0 and 'clang was not found' in msg and 'winget' in msg
           and 'Traceback' not in msg and not os.path.exists(path('img.bin')), msg[-400:])
 
+    # clang versions differ in when they turn a switch into a lookup table in .rodata (LLVM 23 did in translate_report, Apple's clang 21
+    # did not), which the object must not have: build_patch's flags prevent it, and anything left is named in the error
+    sys.path.insert(0, os.path.join(ROOT, 'firmware'))
+    import build_patch as bp
+    from elftools.elf.elffile import ELFFile
+    open(path('sw.c'), 'w').write('unsigned sw(unsigned x) { switch (x) { case 0: return 7; case 1: return 19; case 2: return 3; case 3: return 88;'
+                                  ' case 4: return 41; case 5: return 2; case 6: return 77; default: return 0; } }\n')
+    probs = {}
+    for name, flags in (('without', [f for f in bp.CFLAGS if f != '-fno-jump-tables']), ('with', bp.CFLAGS)):
+        subprocess.check_call([bp.find_clang()] + flags + [path('sw.c'), '-o', path(name + '.o')])
+        with open(path(name + '.o'), 'rb') as f:
+            probs[name] = bp.object_problems(ELFFile(f))
+    check("build_patch's flags keep a switch out of .rodata", probs['with'] == [], probs['with'])
+    check('... and without them the problem is named (.rodata, the table)', any('.rodata' in p for p in probs['without'])
+          and any('switch.table' in p for p in probs['without']), probs['without'])
+
 print('ALL PASS' if not fails else f'{fails} FAILED')
 sys.exit(1 if fails else 0)

@@ -19,8 +19,13 @@ const patched = new Uint8Array(readFileSync(patchedPath));
 
 // ---- building the image ----
 const built = await P.buildImage(stock, bundle);
-check('buildImage(stock) reproduces the patched image byte for byte (the one build_patch.py makes)', hex(built) === hex(patched) && built.length === bundle.result_len, built.length);
-check('the bundle holds no stock bytes: its edits are exactly the bytes that differ', bundle.edits.reduce((n, e) => n + e.hex.length / 2, 0) === stock.reduce((n, b, i) => n + (b !== patched[i] ? 1 : 0), 0));
+// The bundle is made from the reference build (its "compiler"); another clang makes other code, so then the bundle's own image is the
+// reference here (a stale bundle under the same compiler is caught before this by make_bundle.py --check).
+const sameBuild = (await P.sha256Hex(patched)) === bundle.result_sha256;
+if (!sameBuild) console.log(`(this build is not the bundle's: ${bundle.compiler || 'another compiler'}; checking the bundle against its own image)`);
+const ref = sameBuild ? patched : built;
+check('buildImage(stock) reproduces the patched image byte for byte (the one build_patch.py makes)', hex(built) === hex(ref) && built.length === bundle.result_len, built.length);
+check('the bundle holds no stock bytes: its edits are exactly the bytes that differ', bundle.edits.reduce((n, e) => n + e.hex.length / 2, 0) === stock.reduce((n, b, i) => n + (b !== ref[i] ? 1 : 0), 0));
 const flipped = stock.slice(); flipped[1234] ^= 1;
 let err = ''; try { await P.buildImage(flipped, bundle); } catch (e) { err = e.message; }
 check('a stock image with one flipped bit is refused', /not the firmware image/.test(err), err);

@@ -7,7 +7,8 @@ velocity tables, display font and texts, our code), the regions of the appended 
 again before it flashes anything. make() refuses a tail that still contains a run of NI's bytes.
 
     make_bundle.py <stock.bin> <patched.bin> [out.json]      write the bundle (default tools/ui/patch_bundle.json)
-    make_bundle.py --check <stock.bin> <patched.bin>         fail if the committed bundle does not describe these two images"""
+    make_bundle.py --check <stock.bin> <patched.bin>         fail if the committed bundle does not describe these two images
+                                                             (skipped when they were built with another clang than the bundle's)"""
 import hashlib, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 for _d in ('firmware', 'host'): sys.path.insert(0, os.path.join(HERE, '..', '..', _d))
@@ -15,7 +16,13 @@ import build_patch as bp
 STOCK_LEN = 0x9DC8                       # NI's firmware image, 40,392 bytes (build_patch.STOCK_LEN)
 STOCK_SHA256 = '76ebf72d33961639a0bd042ba32354dd8dc07569be69175546eb9fc06e5c5917'   # NI's firmware 1.20 for the Mikro MK3 (tools/restore_stock.sh checks the same)
 
-def make(stock, patched):
+def compiler():
+    """The first line of `clang --version` of the compiler build_patch.py uses: the bytes of our code depend on it."""
+    import subprocess
+    out = subprocess.run([bp.find_clang(), '--version'], capture_output=True, text=True).stdout.splitlines()
+    return out[0].strip() if out else '?'
+
+def make(stock, patched, cc=None):
     assert len(stock) == STOCK_LEN and hashlib.sha256(stock).hexdigest() == STOCK_SHA256, "not NI's firmware 1.20 (the bundle is made for exactly that image)"
     assert patched[:2] and len(patched) > len(stock)
     edits, i = [], 0                                    # runs of bytes that differ; no unchanged (NI) byte is copied into the bundle
@@ -47,6 +54,7 @@ def make(stock, patched):
         'edits': edits,
         'tail_offset': len(stock), 'tail_hex': bytes(tail).hex(), 'copies': copies,
         'result_len': len(patched), 'result_sha256': hashlib.sha256(patched).hexdigest(),
+        'compiler': cc or compiler(),          # informational: the reference build; another clang makes other (equally valid) code
     }
 
 def apply(stock, bundle):
@@ -59,11 +67,15 @@ def apply(stock, bundle):
 if __name__ == '__main__':
     a = [x for x in sys.argv[1:] if x != '--check']
     stock, patched = open(a[0], 'rb').read(), open(a[1], 'rb').read()      # (the whole file: a longer one is not NI's image)
-    b = make(stock, patched)
+    cc = compiler()
+    b = make(stock, patched, cc)
     assert apply(stock, b) == patched, 'the bundle does not rebuild the image'
     path = a[2] if len(a) > 2 else os.path.join(HERE, 'patch_bundle.json')
     text = json.dumps(b, indent=1) + '\n'
     if '--check' in sys.argv:
+        old = json.load(open(path)) if os.path.exists(path) else {}
+        if old.get('compiler') and old['compiler'] != cc:      # the bytes of our code differ between compilers: nothing to compare
+            print(f"patch_bundle.json not checked: it was made with {old['compiler']}, this build used {cc}"); sys.exit(0)
         ok = os.path.exists(path) and open(path).read() == text
         print('patch_bundle.json describes these images' if ok else 'patch_bundle.json is out of date: run tools/ui/make_bundle.py <stock.bin> <patched.bin>'); sys.exit(0 if ok else 1)
     open(path, 'w').write(text)
