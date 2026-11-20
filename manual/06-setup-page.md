@@ -16,7 +16,7 @@ MIDI program is fine.
 ## The header
 - **Connect**: asks once for MIDI access (with SysEx) and reads the device.
 - **Read from device** / **Send to device** / **Save on device**: get the active mapping, make the editor's mapping active, keep it across power cycles
-  (*Save* sends first if needed). **Send as I edit** sends every change a moment after you make it.
+  (*Save* sends first if needed). Save checks the active mapping first, including slot changes made on the controller. Later edits stay in the editor until sent. When the built-in FL Studio mapping is active and unchanged, Save keeps the standalone mapping for use when you switch back. **Send as I edit** sends every change a moment after you make it.
 - The status shows whether the editor matches the device: *Edited, not sent*, *On the device, not saved*, *Saved on the device*, *Device defaults*.
 - The **Preset** switcher, with *modified* when the editor has drifted from the preset it was loaded from.
 
