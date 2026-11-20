@@ -145,9 +145,9 @@ class Controller:
         """OnMidiMsg: controls of the script are handled (FL does not see them), pads in a grid mode too; everything else goes on to FL.
         In Standalone mode (and until the device has said which mode it is in) nothing goes to FL: the controller is not FL's then."""
         if not self.active: ev.handled = True; return
-        self.check_held_context()
         st = ev.status & 0xF0; ch = ev.status & 15
         if ch != t.CHANNEL: return
+        self.check_held_context()
         if st == 0xB0:
             n = ev.data1; v = ev.data2
             if n == t.SHIFT_REPORT_CC: ev.handled = True; self.shift_btn(v > 0); return
@@ -246,7 +246,6 @@ class Controller:
                 self.params = None
                 if cfg.FOCUS_WINDOWS and call(plugins, 'isValid', self.chan(), default=False): call(channels, 'showEditor', self.chan(), 1); call(channels, 'focusEditor', self.chan())
             elif self.mode != 'play': self.focus(midi.widMixer if self.mode == 'group' else midi.widChannelRack)
-            self.check_held_context()
             self.message(MODE_TITLE[self.mode], self.mode_hint())
         elif name in TARGET_BUTTON:
             tg = TARGET_BUTTON[name]; self.target = None if self.target == tg else tg
@@ -301,6 +300,11 @@ class Controller:
 
     def check_held_context(self):
         if self.held and self.held_context != self.step_context():
+            self.held.clear()
+
+    def dirty_channel(self, index, flag):
+        # A different channel can occupy the same global index after either event.
+        if flag in (getattr(midi, 'CE_Delete', 1), getattr(midi, 'CE_Replace', 2)):
             self.held.clear()
 
     def project_load(self, status):

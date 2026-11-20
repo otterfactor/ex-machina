@@ -32,6 +32,7 @@ def OnDeInit():                                       # (also after an error: th
 OnMidiMsg = guarded(lambda event: ctl.midi(event))
 OnSysEx = guarded(lambda event: ctl.on_sysex(event))
 OnIdle = guarded(lambda: ctl.idle())
+OnDirtyChannel = guarded(lambda index, flag: ctl.dirty_channel(index, flag))
 OnRefresh = guarded(lambda flags: ctl.on_refresh(flags))
 OnDoFullRefresh = guarded(lambda: ctl.refresh(full=True))
 OnUpdateBeatIndicator = guarded(lambda value: ctl.beat_indicator(value))

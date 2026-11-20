@@ -375,6 +375,18 @@ for navigation in ('page', 'channel', 'pattern', 'project'):
     pad_event(1, True); pad_event(1, False)
     check('a fresh gesture works after ' + navigation, len(calls('setGridBit')), 1)
 
+# FL can reuse a channel index. Invalidate the gesture when FL reports replacement or deletion.
+for change in (1, 2):
+    dev.ctl = fresh(); press(dev.ctl, 'Step')
+    P.ch[0]['grid'] = {0}
+    pad_event(1, True)
+    P.ch[0] = dict(P.ch[1], grid={0})
+    if hasattr(dev, 'OnDirtyChannel'): dev.OnDirtyChannel(0, change)
+    P.log.clear()
+    pad_event(1, False)
+    check('structural channel event %d protects the new occupant of the same index' % change,
+          (calls('setGridBit'), P.ch[0]['grid']), ([], {0}))
+
 exm_settings.LOOP_RECORD_ON_CONNECT = True; flsim.P = P = flsim.Project(); exm_core.Controller().init()
 check('setting LOOP_RECORD_ON_CONNECT: loop recording switched on when the script starts (once, only if it is off)', calls('globalTransport'), [(113, 1)]); exm_settings.LOOP_RECORD_ON_CONNECT = False
 
