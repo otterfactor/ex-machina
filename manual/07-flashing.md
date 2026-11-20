@@ -13,6 +13,8 @@ directly, so NI's updater is not needed for any of this.
 > `MM3_firmware_1.20_stock.bin` (40,392 bytes, SHA-256 `76ebf72d33961639a0bd042ba32354dd8dc07569be69175546eb9fc06e5c5917`). Keep it backed up:
 > it is what puts the controller back to stock, and NI's updater may stop running on future versions of macOS.
 
+Changing the file or switching between installation and restoration clears the previous confirmation. Check the new preview before confirming.
+
 ## Three ways to flash
 | | Setup page | `flash_guarded.sh` | `dfu_client.py` |
 |---|---|---|---|
