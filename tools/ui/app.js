@@ -542,10 +542,11 @@ async function chooseFirmware(file) {
   setStep('st-file'); setStep('st-image', { off: true }); setStep('st-usb', { off: true }); setStep('st-flash', { off: true });
   $('btn-usb').disabled = true; $('btn-flash').disabled = true;
   try {
-    fw.bundle ||= await (await fetch('patch_bundle.json')).json();
+    const bundle = fw.bundle || await (await fetch('patch_bundle.json')).json();
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const stock = await P.findStockImage(bytes, fw.bundle);
+    const stock = await P.findStockImage(bytes, bundle);
     if (revision !== fw.fileRevision) return;
+    fw.bundle = bundle;
     fw.stock = stock;
     if (!fw.stock) { $('fw-result').textContent = `Not found: this file does not contain NI's firmware 1.20 for the Mikro MK3 (the patch is made for exactly that version, SHA-256 ${fw.bundle.stock_sha256.slice(0, 16)}…).`; return; }
     $('fw-result').textContent = `Found NI's firmware 1.20 (${fw.stock.length} bytes, SHA-256 ${fw.bundle.stock_sha256.slice(0, 16)}…).`;
@@ -616,6 +617,7 @@ async function selectUsb(productId) {
 /** While a flash runs nothing else on the Firmware tab can start another one, and leaving the page asks first. */
 function setBusy(busy) {
   fw.busy = busy;
+  if (busy) $('btn-usb2').hidden = true;
   for (const id of ['ack', 'file-fw', 'btn-usb', 'btn-flash']) { const n = $(id); if (n) n.disabled = busy || (id === 'btn-flash' && !(fw.usb && fw.ready && $('ack').checked)); }
   document.querySelectorAll('input[name=fwmode]').forEach((r) => { r.disabled = busy; });
   window.onbeforeunload = busy ? (e) => { e.preventDefault(); return ''; } : null;
@@ -690,10 +692,9 @@ async function flashNow() {
 }
 
 async function onBootloaderSelected() {
-  if (!fw.confirmed || fw.confirmed !== fw.ready || !$('ack').checked) return;
+  if ($('btn-usb2').hidden || !fw.confirmed || fw.confirmed !== fw.ready || !$('ack').checked) return;
   setBusy(true);
   try {
-    $('btn-usb2').hidden = true;
     fw.usb = await selectUsb(F.PID_DFU);
     if (fw.usb.di.runtime) throw new Error('that is not the bootloader');
     await download(fw.usb.dev, fw.usb.di, fw.confirmed);

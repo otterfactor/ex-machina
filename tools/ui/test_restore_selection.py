@@ -32,10 +32,13 @@ with sync_playwright() as driver:
         elif path == '/flasher/dfu.js':
             route.fulfill(body='''export const VID=1, PID_DFU=2, PID_RUNTIME=3;
                 export const validateImage = () => [];
-                export const readConfigDescriptor = async () => null;
-                export const findDfuInterface = () => ({runtime:false, number:0});
-                export const webUsbTransport = () => ({});
+                export const readConfigDescriptor = async dev => dev.productId;
+                export const findDfuInterface = id => ({runtime:id === PID_RUNTIME, number:0});
+                export const REQ = {DETACH:0};
+                export const webUsbTransport = () => ({ctrlOut:async()=>{}});
                 export async function download(_, bytes) {
+                  window.attempts = (window.attempts || 0) + 1;
+                  if (window.attempts === 1) throw new Error('simulated write failure');
                   window.written = Array.from(bytes);
                   return {};
                 }''', content_type='text/javascript')
@@ -45,8 +48,12 @@ with sync_playwright() as driver:
             assets(route)
     preview.route('**/*', preview_assets)
     preview.add_init_script("""Object.defineProperty(navigator, 'usb', { value: {
-      requestDevice: async () => ({vendorId:1, productId:2, configuration:{},
-                                  open:async()=>{}, claimInterface:async()=>{}, close:async()=>{}}),
+      requestDevice: async ({filters}) => {
+        const runtime = filters.some(f => f.productId === 3);
+        if (!runtime && window.cancelOnce) { window.cancelOnce = false; throw Error('chooser cancelled'); }
+        return {vendorId:1, productId:runtime ? 3 : 2, configuration:{},
+                open:async()=>{}, claimInterface:async()=>{}, close:async()=>{}};
+      },
       getDevices: async () => []
     } });""")
     preview.goto("http://localhost:18884/?mock")
@@ -72,10 +79,22 @@ with sync_playwright() as driver:
     assert not preview.locator('#ack').is_checked()
     assert preview.locator('#btn-flash').is_disabled()
     preview.locator('#btn-usb').evaluate('el => el.click()')
-    preview.wait_for_function("document.querySelector('#usb-result').textContent.includes('bootloader')")
+    preview.wait_for_function("document.querySelector('#usb-result').textContent.includes('normal mode')")
     preview.locator('#ack').evaluate('el => el.click()')
     preview.locator('#btn-flash').evaluate('el => el.click()')
+    preview.wait_for_function("!document.querySelector('#btn-usb2').hidden")
+    assert preview.evaluate('window.attempts || 0') == 0
+    preview.evaluate("window.cancelOnce = true")
+    preview.locator('#btn-usb2').evaluate('el => el.click()')
+    preview.wait_for_function("document.querySelector('#flash-result').textContent.includes('chooser cancelled')")
+    preview.locator('#btn-usb2').evaluate('el => el.click()')
+    preview.wait_for_function("document.querySelector('#flash-result').textContent.includes('simulated write failure')")
+    preview.locator('#btn-flash').evaluate('el => el.click()')
     preview.wait_for_function('Array.isArray(window.written)')
+    preview.locator('#btn-usb2').evaluate('el => { if (!el.hidden) el.click(); }')
+    preview.evaluate('() => new Promise(requestAnimationFrame)')
+    assert preview.evaluate('window.attempts') == 2, 'retry started two mock writes'
+
     assert preview.evaluate('window.written') == list(b'12345')
     print('PASS: late file and build results leave the selected image intact')
     browser.close()
