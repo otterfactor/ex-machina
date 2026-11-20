@@ -99,6 +99,7 @@ class Controller:
         self.shift_pads = set()                                     # pads pressed with Shift held: their release is ours too
         self.held = {}                                              # Step mode: held steps -> 'new' (set by this press) / 'on' (was on: off on release, unless edited) / 'edited'
         self.step_param = 0                                         # which STEP_PARAMS entry the encoder edits on held steps
+        self.held_context = None
         self.held_undo = False                                      # the held steps' encoder edit has its undo point
         self.bank = 0; self.bank_chan = None                        # play mode: the drum layout's bank (FPC A / B, slice page) and the channel it is for
         self.sounding = {}                                          # play mode: pad -> the note it started (its Note Off goes to the same note)
@@ -144,6 +145,7 @@ class Controller:
         """OnMidiMsg: controls of the script are handled (FL does not see them), pads in a grid mode too; everything else goes on to FL.
         In Standalone mode (and until the device has said which mode it is in) nothing goes to FL: the controller is not FL's then."""
         if not self.active: ev.handled = True; return
+        self.check_held_context()
         st = ev.status & 0xF0; ch = ev.status & 15
         if ch != t.CHANNEL: return
         if st == 0xB0:
@@ -244,6 +246,7 @@ class Controller:
                 self.params = None
                 if cfg.FOCUS_WINDOWS and call(plugins, 'isValid', self.chan(), default=False): call(channels, 'showEditor', self.chan(), 1); call(channels, 'focusEditor', self.chan())
             elif self.mode != 'play': self.focus(midi.widMixer if self.mode == 'group' else midi.widChannelRack)
+            self.check_held_context()
             self.message(MODE_TITLE[self.mode], self.mode_hint())
         elif name in TARGET_BUTTON:
             tg = TARGET_BUTTON[name]; self.target = None if self.target == tg else tg
@@ -291,13 +294,28 @@ class Controller:
         elif self.target in (None, 'browser'): call(ui, 'enter')
 
     # ---- pads in a grid mode --------------------------------------------------------------------------------------------------------------------
+    def step_context(self):
+        channel = self.chan()
+        return (call(channels, 'getChannelIndex', channel, default=channel),
+                call(patterns, 'patternNumber', default=1), self.page['step'])
+
+    def check_held_context(self):
+        if self.held and self.held_context != self.step_context():
+            self.held.clear()
+
+    def project_load(self, status):
+        self.held.clear()
+        self.dirty = True
+
     def pad(self, n, vel=100):
         i = self.page[self.mode] * 16 + n - 1
         if self.mode in ('step', 'select', 'mute', 'solo') and not call(channels, 'channelCount', default=0):
             self.message(MODE_TITLE[self.mode], 'NO CHANNELS IN GROUP'); return
         if self.mode == 'step':                                    # a step: on at once (with the hit's velocity); an on step goes off when let go,
             c = self.chan()                                        # unless the encoder edited it while held
-            if not self.held: self.held_undo = False                # (a new hold: its first encoder edit gets an undo point)
+            if not self.held:
+                self.held_context = self.step_context()
+                self.held_undo = False                # (a new hold: its first encoder edit gets an undo point)
             if call(channels, 'getGridBit', c, i, default=False): self.held[i] = 'on'
             else:
                 self.save_undo('Step on'); call(channels, 'setGridBit', c, i, 1); self.held[i] = 'new'
@@ -428,6 +446,7 @@ class Controller:
     def on_refresh(self, flags):
         """OnRefresh: redraw; a change of Channel Rack group also ends held steps and says how many channels the group has."""
         self.dirty = True
+        self.check_held_context()
         if flags & getattr(midi, 'HW_Dirty_ChannelRackGroup', 32768) and self.active:
             self.held = {}; self.bank_chan = None
             n = call(channels, 'channelCount', default=0) or 0
@@ -771,6 +790,7 @@ class Controller:
         self.dirty = False; self.refresh_t = now()
         if full: self.leds = {}
         if self.mode in GRID: self.page[self.mode] = max(0, min(self.page[self.mode], self.pages() - 1))   # (a group, a pattern or a plug-in changed under it)
+        self.check_held_context()
         self.send_host()
         want = {t.PAD_LED[p]: v for p, v in self.pad_leds().items()}
         want.update(self.button_leds()); want.update(self.strip_leds())

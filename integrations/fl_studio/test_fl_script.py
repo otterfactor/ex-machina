@@ -348,6 +348,33 @@ check('an error in a callback: the script stands down, the device keeps only its
 e = Event(0x90 | tb.CHANNEL, tb.PAD_NOTE[1], 100); dev.OnMidiMsg(e)
 P.out.clear(); dev.OnDeInit()
 check('... from then on FL gets the controller\'s MIDI as plain MIDI; closing FL still ends host mode (HOST 0)', (e.handled, hosts()), (False, [0]))
+# Context changes can reach FL before or after its refresh callback. Use its actual script entry points.
+for navigation in ('page', 'channel', 'pattern', 'project'):
+    dev.ctl = fresh()
+    P.pat[0]['length'] = 8
+    P.ch[0]['grid'] = {0, 1}; P.ch[1]['grid'] = {0, 1}
+    press(dev.ctl, 'Step')
+    def pad_event(n, down):
+        dev.OnMidiMsg(Event((0x90 if down else 0x80) | tb.CHANNEL, tb.PAD_NOTE[n], 100 if down else 0))
+    pad_event(1, True); pad_event(2, True)
+    if navigation == 'page': press(dev.ctl, 'Right')
+    elif navigation == 'channel':
+        import channels
+        channels.selectOneChannel(1)       # no refresh until after release
+    elif navigation == 'pattern':
+        import patterns
+        patterns.jumpToPattern(2)
+        dev.OnRefresh(0)
+    else: dev.OnProjectLoad(0)
+    P.log.clear()
+    pad_event(1, False)
+    dev.OnMidiMsg(Event(0xB0 | tb.CHANNEL, tb.ENC_CC, 1))
+    pad_event(2, False)
+    check(navigation + ' cancels held steps before release or encoder edits',
+          (dev.ctl.held, calls('setGridBit'), calls('setStepParameterByIndex')), ({}, [], []))
+    pad_event(1, True); pad_event(1, False)
+    check('a fresh gesture works after ' + navigation, len(calls('setGridBit')), 1)
+
 exm_settings.LOOP_RECORD_ON_CONNECT = True; flsim.P = P = flsim.Project(); exm_core.Controller().init()
 check('setting LOOP_RECORD_ON_CONNECT: loop recording switched on when the script starts (once, only if it is off)', calls('globalTransport'), [(113, 1)]); exm_settings.LOOP_RECORD_ON_CONNECT = False
 
