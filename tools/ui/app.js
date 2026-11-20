@@ -284,6 +284,7 @@ function edited() { state.touched = true; refreshAll(); if (state.live && state.
 function syncState() {
   if (!state.client) return ['Editing offline', ''];
   if (!state.deviceCfg || !M.equal(state.cfg, state.deviceCfg)) return ['Edited, not sent', 'edit'];
+  if (state.info?.mode === 'fl') return ['FL Studio mapping active', 'ok'];
   if (state.info?.unsaved_changes) return ['On the device, not saved', 'warn'];
   return state.info?.saved ? ['Saved on the device', 'ok'] : ['Device defaults', 'ok'];
 }
@@ -388,12 +389,15 @@ function writeMapping(save, quiet) {
     if (state.client !== client) return false;
     const bad = M.check(cfg);
     if (bad !== null) { say(`This configuration cannot be sent: ${fieldAt(bad)} is out of range.`, true); return false; }
-    if (!save || !state.deviceCfg || !M.equal(cfg, state.deviceCfg)) {
+    // Loading a slot on the controller does not update the page's cached mapping.
+    const active = save ? (await client.exchange(M.getRequest(), M.CMD.GET)).cfg : null;
+    if (state.client !== client) return false;
+    if (!active || !M.equal(cfg, active)) {
       const r = await client.exchange(M.setRequest(cfg), M.CMD.SET);
       if (state.client !== client) return false;
       if (r.status !== 0) { say(`The device refused the configuration: ${r.status_text}${r.offset != null ? ` (${fieldAt(r.offset)})` : ''}.`, true); return false; }
-      state.deviceCfg = cfg;
     }
+    state.deviceCfg = cfg;
     const result = save ? await client.exchange(M.saveRequest(), M.CMD.SAVE) : null;
     if (state.client !== client) return false;
     const info = await client.exchange(M.infoRequest(), M.CMD.INFO);
@@ -402,7 +406,8 @@ function writeMapping(save, quiet) {
     refreshAll();
     if (save) {
       if (result.status !== 0) { say(`Saving failed: ${result.status_text}.`, true); return false; }
-      say(M.equal(cfg, state.cfg) ? 'Saved on the device. It keeps this mapping when it is unplugged.' : 'Saved on the device. Later edits are still in the editor.');
+      if (info.mode === 'fl') say('Saved the standalone mapping. The built-in FL Studio mapping is active.');
+      else say(M.equal(cfg, state.cfg) ? 'Saved on the device. It keeps this mapping when it is unplugged.' : 'Saved on the device. Later edits are still in the editor.');
     } else if (!quiet) say('Sent. The device uses the new mapping now (not saved yet).');
     return true;
   });

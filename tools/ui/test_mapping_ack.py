@@ -10,9 +10,27 @@ def assets(route):
     if path == "mock.js":
         route.fulfill(content_type="text/javascript", body="""
           import { makeMock as original } from './original-mock.js';
-          import { D } from './mmk3.js';
+          import { CMD, D, REPLY } from './mmk3.js';
           export function makeMock() {
             const mock = original({delay: 120});
+            window.changeOnController = n => { mock.dev.cfg[D.FIELDS.channel[0]] = n - 1; };
+            let fl = false, standalone;
+            window.switchToFL = () => {
+              standalone = mock.dev.cfg.slice();
+              window.changeOnController(12);
+              fl = true;
+            };
+            const {listen, send} = mock.transport;
+            mock.transport.listen = callback => listen(reply => {
+              if (fl && reply[4] === CMD.INFO + REPLY)
+                reply = Uint8Array.from([...reply.slice(0,-1), 1, 0xf7]);
+              callback(reply);
+            });
+            mock.transport.send = msg => {
+              if (fl && msg[4] === CMD.SET) throw new Error('unexpected exit from FL mode');
+              send(msg);
+              if (fl && msg[4] === CMD.SAVE) mock.dev.saved = standalone.slice();
+            };
             window.savedChannel = () => mock.dev.saved[D.FIELDS.channel[0]] + 1;
             return mock;
           }
@@ -62,5 +80,17 @@ with sync_playwright() as driver:
     assert page.locator('#f-channel').input_value() == '4'  # MIDI channel 5 active
     assert page.locator('#chip-sync').text_content() == 'On the device, not saved'
     assert page.evaluate('savedChannel()') == 4
+    # A physical slot change is invisible to the editor until its next GET.
+    page.evaluate("changeOnController(7)")
+    page.locator('#btn-save').click()
+    page.wait_for_function("document.querySelector('#status-text').textContent.startsWith('Saved on the device.')")
+    assert page.evaluate('savedChannel()') == 5, 'Save trusted the stale host cache'
+    page.evaluate('switchToFL()')
+    page.locator('#btn-read').click()
+    page.wait_for_function("document.querySelector('#chip-sync').textContent === 'FL Studio mapping active'")
+    page.locator('#btn-save').click()
+    page.wait_for_function("document.querySelector('#status-text').textContent.startsWith('Saved the standalone mapping.')")
+    assert page.evaluate('savedChannel()') == 5
+    assert page.locator('#f-channel').input_value() == '11'
     print('PASS: edits across manual Send, Save and live sending')
     browser.close()
