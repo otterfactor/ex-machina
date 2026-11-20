@@ -531,43 +531,65 @@ async function importPresets(files) {
 }
 
 // ---- firmware ----
-const fw = { bundle: null, stock: null, image: null, usb: null, mode: 'midi' };
+const fw = { bundle: null, stock: null, ready: null, confirmed: null, usb: null, mode: 'midi', fileRevision: 0, imageRevision: 0 };
 const setStep = (id, { done = false, off = false } = {}) => { const li = $(id); li.classList.toggle('done', done); li.classList.toggle('off', off); };
 
 async function chooseFirmware(file) {
-  $('fw-result').textContent = 'Looking for the firmware…'; fw.image = null; fw.stock = null; $('btn-keep').hidden = true; $('keep-result').textContent = '';
+  const revision = ++fw.fileRevision;
+  fw.stock = null;
+  invalidateImage();
+  $('fw-result').textContent = 'Looking for the firmware…'; $('btn-keep').hidden = true; $('keep-result').textContent = '';
   setStep('st-file'); setStep('st-image', { off: true }); setStep('st-usb', { off: true }); setStep('st-flash', { off: true });
   $('btn-usb').disabled = true; $('btn-flash').disabled = true;
   try {
-    fw.bundle ||= await (await fetch('patch_bundle.json')).json();
+    const bundle = fw.bundle || await (await fetch('patch_bundle.json')).json();
     const bytes = new Uint8Array(await file.arrayBuffer());
-    fw.stock = await P.findStockImage(bytes, fw.bundle);
+    const stock = await P.findStockImage(bytes, bundle);
+    if (revision !== fw.fileRevision) return;
+    fw.bundle = bundle;
+    fw.stock = stock;
     if (!fw.stock) { $('fw-result').textContent = `Not found: this file does not contain NI's firmware 1.20 for the Mikro MK3 (the patch is made for exactly that version, SHA-256 ${fw.bundle.stock_sha256.slice(0, 16)}…).`; return; }
     $('fw-result').textContent = `Found NI's firmware 1.20 (${fw.stock.length} bytes, SHA-256 ${fw.bundle.stock_sha256.slice(0, 16)}…).`;
     $('btn-keep').hidden = false;
     await prepareImage();
-  } catch (e) { $('fw-result').textContent = `Problem: ${e.message}`; }
+  } catch (e) { if (revision === fw.fileRevision) $('fw-result').textContent = `Problem: ${e.message}`; }
+}
+
+function invalidateImage() {
+  fw.imageRevision++;
+  fw.ready = null;
+  fw.confirmed = null;
+  $('img-result').textContent = '';
+  $('ack').checked = false;
+  $('ack').disabled = true;
+  $('btn-usb2').hidden = true;
+  $('btn-flash').disabled = true;
 }
 
 /** The image for the chosen mode: the patched one, or NI's original as it is. */
 async function prepareImage() {
-  fw.image = null; setStep('st-image', { off: true }); setStep('st-usb', { off: true }); setStep('st-flash', { off: true }); $('btn-usb').disabled = true; $('btn-flash').disabled = true;
-  if (!fw.stock) return;
+  invalidateImage();
+  const { imageRevision, mode, stock, bundle } = fw;
+  setStep('st-image', { off: true }); setStep('st-usb', { off: true }); setStep('st-flash', { off: true }); $('btn-usb').disabled = true;
+  if (!stock) return;
   try {
-    fw.image = fw.mode === 'stock' ? fw.stock : await P.buildImage(fw.stock, fw.bundle);
-    const problems = F.validateImage(fw.image);
+    const image = mode === 'stock' ? stock : await P.buildImage(stock, bundle);
+    if (imageRevision !== fw.imageRevision) return;
+    const problems = F.validateImage(image);
     if (problems.length) throw new Error(problems.join('; '));
-    const sha = fw.mode === 'stock' ? fw.bundle.stock_sha256 : fw.bundle.result_sha256;
-    $('img-result').textContent = fw.mode === 'stock'
-      ? `NI's original firmware: ${fw.image.length} bytes, SHA-256 ${sha.slice(0, 16)}… (checked). The device will be the plain NI device again (no MIDI), as before the patch.`
-      : `Patched image: ${fw.image.length} bytes, SHA-256 ${sha.slice(0, 16)}… (checked), flash 0x${F.APP_BASE.toString(16)}–0x${(F.APP_BASE + fw.image.length - 1).toString(16)}. The original firmware can be restored from this page.`;
-    $('ack-text').textContent = fw.mode === 'stock'
+    const sha = mode === 'stock' ? bundle.stock_sha256 : bundle.result_sha256;
+    fw.ready = { image, mode };
+    $('ack').disabled = false;
+    $('img-result').textContent = mode === 'stock'
+      ? `NI's original firmware: ${image.length} bytes, SHA-256 ${sha.slice(0, 16)}… (checked). The device will be the plain NI device again (no MIDI), as before the patch.`
+      : `Patched image: ${image.length} bytes, SHA-256 ${sha.slice(0, 16)}… (checked), flash 0x${F.APP_BASE.toString(16)}–0x${(F.APP_BASE + image.length - 1).toString(16)}. The original firmware can be restored from this page.`;
+    $('ack-text').textContent = mode === 'stock'
       ? 'I know the device will stop being a MIDI device until the MIDI firmware is flashed again, and I will not unplug it while this runs.'
       : 'I understand that Ex-Machina is experimental, unofficial software provided as is, without any warranty, and that installing it is entirely at my own risk. I have a copy of NI\'s original firmware saved (step 1) so that I can restore it, and I will not unplug the device while this runs.';
     setStep('st-file', { done: true }); setStep('st-image', { done: true }); setStep('st-usb');
     $('btn-usb').disabled = !navigator.usb;
     if (!navigator.usb) $('usb-result').textContent = 'This browser has no WebUSB. Use Chrome or Edge.';
-  } catch (e) { $('img-result').textContent = `Problem: ${e.message}`; }
+  } catch (e) { if (imageRevision === fw.imageRevision) $('img-result').textContent = `Problem: ${e.message}`; }
 }
 
 function keepCopy() {
@@ -595,7 +617,8 @@ async function selectUsb(productId) {
 /** While a flash runs nothing else on the Firmware tab can start another one, and leaving the page asks first. */
 function setBusy(busy) {
   fw.busy = busy;
-  for (const id of ['ack', 'file-fw', 'btn-usb', 'btn-flash']) { const n = $(id); if (n) n.disabled = busy || (id === 'btn-flash' && !(fw.usb && fw.image && $('ack').checked)); }
+  if (busy) $('btn-usb2').hidden = true;
+  for (const id of ['ack', 'file-fw', 'btn-usb', 'btn-flash']) { const n = $(id); if (n) n.disabled = busy || (id === 'btn-flash' && !(fw.usb && fw.ready && $('ack').checked)); }
   document.querySelectorAll('input[name=fwmode]').forEach((r) => { r.disabled = busy; });
   window.onbeforeunload = busy ? (e) => { e.preventDefault(); return ''; } : null;
 }
@@ -606,16 +629,16 @@ async function onUsbSelected() {
     const { dev, di } = fw.usb;
     $('usb-result').textContent = `${dev.productName || 'device'} (${di.runtime ? 'normal mode' : 'bootloader'}, DFU interface ${di.number}).`;
     setStep('st-usb', { done: true }); setStep('st-flash');
-    $('btn-flash').disabled = fw.busy || !$('ack').checked;
+    $('btn-flash').disabled = fw.busy || !fw.ready || !$('ack').checked;
   } catch (e) { $('usb-result').textContent = `Problem: ${e.message}`; }
 }
 
-async function download(dev, di) {
+async function download(dev, di, selection) {
   const prog = $('prog'); prog.hidden = false; prog.value = 0;
   const t = F.webUsbTransport(dev, di.number);
   $('flash-result').textContent = 'Writing the firmware…';
   fw.writing = true;
-  const result = await F.download(t, fw.image, { block: di.functional?.transferSize || 64, progress: (d, n) => { prog.value = (d / n) * 100; } });
+  const result = await F.download(t, selection.image, { block: di.functional?.transferSize || 64, progress: (d, n) => { prog.value = (d / n) * 100; } });
   try { await dev.close(); } catch { /* the device is already gone */ }
   $('flash-result').textContent = result === 'reset' ? 'Written. The device restarted by itself. Waiting for it to come back…' : 'Written. Waiting for the device to restart…';
   for (let i = 0; i < 60; i++) {
@@ -631,8 +654,8 @@ async function download(dev, di) {
       fw.writing = false; setBusy(false);
       const bcd = (back.deviceVersionMajor << 8) | (back.deviceVersionMinor << 4) | back.deviceVersionSubminor;
       const ver = `17cc:1700, version 0x${bcd.toString(16).padStart(4, '0')}`;
-      $('flash-result').textContent = fw.mode === 'stock' ? `Done. The device is back (${ver}) and runs NI's original firmware again.` : `Done. The device is back (${ver}). It is a MIDI device now: press Connect to talk to it.`;
-      say(fw.mode === 'stock' ? 'NI\'s original firmware restored.' : 'Firmware flashed.'); return;
+      $('flash-result').textContent = selection.mode === 'stock' ? `Done. The device is back (${ver}) and runs NI's original firmware again.` : `Done. The device is back (${ver}). It is a MIDI device now: press Connect to talk to it.`;
+      say(selection.mode === 'stock' ? 'NI\'s original firmware restored.' : 'Firmware flashed.'); return;
     }
   }
   fw.writing = false; setBusy(false);
@@ -652,6 +675,8 @@ function flashFailed(e) {
 }
 
 async function flashNow() {
+  if (fw.busy || !fw.usb || !fw.ready || !$('ack').checked) return;
+  fw.confirmed = fw.ready;
   setBusy(true);
   try {
     const { dev, di } = fw.usb;
@@ -662,19 +687,20 @@ async function flashNow() {
       $('flash-result').textContent = 'The device is in its bootloader now. Click "Select the bootloader…" and choose it (the browser needs one more click).';
       $('btn-usb2').hidden = false; return;                         // (still busy: the flash goes on with the bootloader)
     }
-    await download(dev, di);
+    await download(dev, di, fw.confirmed);
   } catch (e) { flashFailed(e); }
 }
 
 async function onBootloaderSelected() {
+  if ($('btn-usb2').hidden || !fw.confirmed || fw.confirmed !== fw.ready || !$('ack').checked) return;
+  setBusy(true);
   try {
-    $('btn-usb2').hidden = true;
     fw.usb = await selectUsb(F.PID_DFU);
     if (fw.usb.di.runtime) throw new Error('that is not the bootloader');
-    await download(fw.usb.dev, fw.usb.di);
+    await download(fw.usb.dev, fw.usb.di, fw.confirmed);
   } catch (e) {
     if (fw.writing) flashFailed(e);
-    else { $('flash-result').textContent = `Problem: ${e.message}. The device waits in its bootloader: click "Select the bootloader…" again.`; $('btn-usb2').hidden = false; say(`Flashing stopped: ${e.message}`, true); }
+    else { setBusy(false); $('flash-result').textContent = `Problem: ${e.message}. The device waits in its bootloader: click "Select the bootloader…" again.`; $('btn-usb2').hidden = false; say(`Flashing stopped: ${e.message}`, true); }
   }
 }
 
@@ -711,7 +737,7 @@ function init() {
   $('btn-usb').addEventListener('click', onUsbSelected);
   $('btn-keep').addEventListener('click', keepCopy);
   document.querySelectorAll('input[name=fwmode]').forEach((r) => r.addEventListener('change', () => { fw.mode = r.value; if (r.checked) prepareImage(); }));
-  $('ack').addEventListener('change', () => { $('btn-flash').disabled = fw.busy || !(fw.usb && fw.image && $('ack').checked); });
+  $('ack').addEventListener('change', () => { $('btn-flash').disabled = fw.busy || !(fw.usb && fw.ready && $('ack').checked); });
   $('btn-flash').addEventListener('click', flashNow);
   $('btn-usb2').addEventListener('click', onBootloaderSelected);
   refreshAll(); renderPresetCards();
