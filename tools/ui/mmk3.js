@@ -188,7 +188,11 @@ export class Mk3 {
   /** Sends a request and waits for its reply. Requests made at the same time are sent one after the other (the device serves one at a
    *  time and drops the others), and a missing reply is asked again (SET / GET / INFO are safe to repeat; SAVE and RESET too). */
   request(msg, cmd) {
-    const run = () => this.exchange(msg, cmd);
+    return this.enqueue(() => this.exchange(msg, cmd));
+  }
+
+  // A compound operation can reserve the same queue for consecutive exchanges.
+  enqueue(run) {
     const p = this.queue.then(run, run);
     this.queue = p.catch(() => {});
     return p;

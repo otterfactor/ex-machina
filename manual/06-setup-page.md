@@ -16,7 +16,7 @@ MIDI program is fine.
 ## The header
 - **Connect**: asks once for MIDI access (with SysEx) and reads the device.
 - **Read from device** / **Send to device** / **Save on device**: get the active mapping, make the editor's mapping active, keep it across power cycles
-  (*Save* sends first if needed). **Send as I edit** sends every change a moment after you make it.
+  (*Save* sends first if needed). Each click uses the mapping shown at that moment. Later edits stay in the editor until sent. **Send as I edit** sends every change a moment after you make it.
 - The status shows whether the editor matches the device: *Edited, not sent*, *On the device, not saved*, *Saved on the device*, *Device defaults*.
 - The **Preset** switcher, with *modified* when the editor has drifted from the preset it was loaded from.
 

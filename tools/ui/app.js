@@ -378,23 +378,37 @@ async function readFromDevice() {
   await refreshInfo(); refreshAll(); say('Read the configuration from the device.');
 }
 
-async function sendToDevice(quiet = false) {
-  const bad = M.check(state.cfg);
-  if (bad !== null) { say(`This configuration cannot be sent: ${fieldAt(bad)} is out of range.`, true); return false; }
-  const r = await state.client.set(state.cfg);
-  if (r.status !== 0) { say(`The device refused the configuration: ${r.status_text}${r.offset != null ? ` (${fieldAt(r.offset)})` : ''}.`, true); return false; }
-  state.deviceCfg = Uint8Array.from(state.cfg);
-  await refreshInfo(); refreshAll();
-  if (!quiet) say('Sent. The device uses the new mapping now (not saved yet).');
-  return true;
+// Keep each Send or Save tied to the mapping visible when it was requested.
+// In particular a later live Send must wait for the earlier Save to finish.
+function writeMapping(save, quiet) {
+  const client = state.client;
+  const cfg = Uint8Array.from(state.cfg);
+  if (!client) return Promise.resolve(false);
+  return client.enqueue(async () => {
+    if (state.client !== client) return false;
+    const bad = M.check(cfg);
+    if (bad !== null) { say(`This configuration cannot be sent: ${fieldAt(bad)} is out of range.`, true); return false; }
+    if (!save || !state.deviceCfg || !M.equal(cfg, state.deviceCfg)) {
+      const r = await client.exchange(M.setRequest(cfg), M.CMD.SET);
+      if (state.client !== client) return false;
+      if (r.status !== 0) { say(`The device refused the configuration: ${r.status_text}${r.offset != null ? ` (${fieldAt(r.offset)})` : ''}.`, true); return false; }
+      state.deviceCfg = cfg;
+    }
+    const result = save ? await client.exchange(M.saveRequest(), M.CMD.SAVE) : null;
+    if (state.client !== client) return false;
+    const info = await client.exchange(M.infoRequest(), M.CMD.INFO);
+    if (state.client !== client) return false;
+    state.info = info;
+    refreshAll();
+    if (save) {
+      if (result.status !== 0) { say(`Saving failed: ${result.status_text}.`, true); return false; }
+      say(M.equal(cfg, state.cfg) ? 'Saved on the device. It keeps this mapping when it is unplugged.' : 'Saved on the device. Later edits are still in the editor.');
+    } else if (!quiet) say('Sent. The device uses the new mapping now (not saved yet).');
+    return true;
+  });
 }
-
-async function saveOnDevice() {
-  if (!state.deviceCfg || !M.equal(state.cfg, state.deviceCfg)) { if (!(await sendToDevice(true))) return; }
-  const r = await state.client.save();
-  await refreshInfo(); refreshAll();
-  if (r.status === 0) say('Saved on the device. It keeps this mapping when it is unplugged.'); else say(`Saving failed: ${r.status_text}.`, true);
-}
+function sendToDevice(quiet = false) { return writeMapping(false, quiet); }
+function saveOnDevice() { return writeMapping(true, false); }
 
 async function resetDevice(erase) {
   const r = await state.client.reset(erase);
